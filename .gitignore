@@ -2,3 +2,5 @@
 .Rhistory
 .RData
 .Ruserdata
+data/README.html
+data/ENCODE/Experiments/*
