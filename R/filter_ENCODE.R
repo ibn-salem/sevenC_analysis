@@ -5,6 +5,9 @@
 require(tidyverse)
 require(stringr)
 
+outPrefix <- file.path("results", "data.ENCODE")
+dir.create(dirname(outPrefix), showWarnings = FALSE)
+
 useTFs <- c(
   "ZNF143",
   "STAT1",
@@ -21,62 +24,132 @@ useTFs <- c(
 #-------------------------------------------------------------------------------
 
 metaDataFile <- "data/ENCODE/metadata.tsv"
+reportFile <- "data/ENCODE/report.tsv"
 
-# parse metadata
-meta <- read_tsv(metaDataFile)
 
-# add TF name
+# parse report.tsv with metadata for each experiment ----------------------
+
+# parse report containing metadata for each experiment
+report <- read_tsv(
+  reportFile,
+  col_types = cols(
+    `Biological replicate` = col_character(),
+    `Technical replicate` = col_character()
+  ))
+
+report <- report %>%
+  mutate(exp_nrep = map_int(str_split(`Biological replicate`, ","), length))
+
+# parse metadata.tsv for each file ----------------------------------------
+
+# parse metadata for each file
+meta <- read_tsv(
+  metaDataFile,
+  col_types = cols(
+    `Biological replicate(s)` = col_character(),
+    `Technical replicate` = col_character()
+  ))
+
+# filter for hg19
+meta <- meta %>%
+  filter(Assembly == "hg19")
+
+# add TF name from report table
+meta <- meta %>%
+  left_join(
+    report,
+    select(report, Accession, `Target label`),
+    by = c("Experiment accession" = "Accession")
+  ) %>%
+  mutate(TF = `Target label`, Lab = Lab.x) %>%
+  mutate(rep = map(str_split(`Biological replicate(s)`, ","), parse_integer)) %>%
+  mutate(file_nrep = map_int(rep, length)) %>%
+  mutate(file_nrep = ifelse(is.na(rep), "Unknown", file_nrep)) %>%
+  mutate(size = Size / 1024^2)
+
+
+# reorder columns to have important column at beginning
 df <- meta %>%
-  mutate(TF = str_replace(`Experiment target`, "-human", "")) %>%
   select(`File accession`, TF, `Output type`, 
-         `Biological replicate(s)`, Lab, everything())
+         rep, file_nrep, exp_nrep, Lab, size, everything())
+
 
 # utils:::format.object_size(x, format="auto")
-
 plotDF <- df %>%
   filter(`Biosample term name` == "GM12878") %>%
-  filter(Lab == "ENCODE Processing Pipeline") %>%
-  mutate(size = parse_double(Size)) %>%
-  group_by(`Output type`, `Biological replicate(s)`) %>%
+  # filter(Lab == "ENCODE Processing Pipeline") %>%
+  group_by(`Output type`, file_nrep) %>%
   summarise(
-      mean_size = mean(size, na.rm=TRUE),
+      mean_size = mean(size, na.rm = TRUE),
       n = n()
   )
 
+#plotDF %>% count(`Output type`)
 # utils:::format.object_size(plotDF$mean_size, "Mb")
 
-plotDF %>%
-  ggplot(aes(x=`Output type`, y=n, fill=`Biological replicate(s)`)) + 
+p <- plotDF %>%
+  ggplot(aes(x = `Output type`, y = n, fill = factor(file_nrep))) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(str_c(outPrefix, ".n_by_outputType_and_nrep.barplot.pdf"))
+
+
+p <- plotDF %>%
+  ggplot(aes(x=`Output type`, y=mean_size, fill = factor(file_nrep))) + 
   geom_bar(stat="identity", position="dodge") +
   theme_bw() + 
   theme(axis.text.x=element_text(angle=45, hjust=1))
+ggsave(str_c(outPrefix, ".mean_size_by_outputType_and_nrep.barplot.pdf"))
 
-
-plotDF %>%
-  ggplot(aes(x=`Output type`, y=mean_size, fill=`Biological replicate(s)`)) + 
-  geom_bar(stat="identity", position="dodge") +
+p <- df %>%
+  filter(`Biosample term name` == "GM12878") %>%
+  ggplot(aes(x=`Output type`, y=size, fill=factor(file_nrep))) + 
+  geom_boxplot() +
   theme_bw() + 
   theme(axis.text.x=element_text(angle=45, hjust=1))
+ggsave(str_c(outPrefix, ".size_by_outputType_and_nrep.boxplot.pdf"))
+
+
+
+# Filter for used data sets -----------------------------------------------
+
 
   
 # filter for "signal" as output with combined replicate (is NA here) and only GM12878 cell line
 
 flt <- df %>% 
-  filter(`Output type` %in% c("raw signal", "fold change over control", "signal")) %>%
   filter(`Output type` %in% c("raw signal", "fold change over control")) %>%
-  filter(`Biological replicate(s)` == "1" | is.na(`Biological replicate(s)`)) %>% 
+  # filter(`Biological replicate(s)` == "1" | is.na(rep)) %>% 
+  # filter(map_lgl(rep, setequal, 1:2) | is.na(rep)) %>% 
+  filter(file_nrep == 2 | `Output type` == "raw signal") %>% 
   filter(`Biosample term name` == "GM12878") %>%
-  filter(TF %in% useTFs)
+  distinct(`Output type`, TF, .keep_all = TRUE) %>%
+  mutate(usedTF = TF %in% useTFs) %>%
+  arrange(desc(usedTF), desc(`Output type`)) %>%
+  mutate(filePath = file.path("data", "ENCODE", "Experiments", basename(`File download URL`)))
+  
+# get size of files
+sizeDF <- flt %>%
+  group_by(`Output type`) %>%
+  summarize(
+    n = n(),
+    total_size = sum(size) / 1024,
+    mean_size = mean(size)
+  )
+
+usedFlt <- flt %>%
+  filter(usedTF)
+
+
+# %>%
+#   filter(TF %in% useTFs)
   
 
 # is.na(`Biological replicate(s)`) | 
 # %>%
 #   distinct(TF, Lab, .keep_all = TRUE)
-
-
-
-# add location
-flt$filePath <- file.path("data", "ENCODE", "Experiments", basename(flt$`File download URL`))
 
 #-------------------------------------------------------------------------------
 # Output filtered URL list and metadata table
@@ -88,8 +161,11 @@ flt %>%
     path = file.path("data", "ENCODE", "URLs.flt.txt"),
     col_names = FALSE)
 
-write_tsv(flt, 
-          path = file.path("data", "ENCODE", "metadata.flt.tsv"))
+flt %>%
+  select(-rep) %>%
+  write_tsv(path = file.path("data", "ENCODE", "metadata.flt.tsv"))
+
+# do the same for filtered files
 
 #-------------------------------------------------------------------------------
 # download files

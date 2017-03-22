@@ -100,10 +100,15 @@ gunzip Tang2015/*.gz
 mkdir -p ENCODE
 # manully selct for ChIP-seq, TF, bigWig in hg19
 # on this site https://www.encodeproject.org/search
+# result in this URL: https://www.encodeproject.org/report/?type=Experiment&assay_title=ChIP-seq&assembly=hg19&target.investigated_as=transcription+factor&files.file_type=bigWig&limit=all
 
+# download files.txt with download URLs to all files:
 wget -O ENCODE/files.txt https://www.encodeproject.org/batch_download/type%3DExperiment%26assay_title%3DChIP-seq%26assembly%3Dhg19%26target.investigated_as%3Dtranscription%2Bfactor%26files.file_type%3DbigWig
 
-# download metadata file
+# download report.tsv files
+wget -O ENCODE/report.tsv "https://www.encodeproject.org/report.tsv?type=Experiment&assay_title=ChIP-seq&assembly=hg19&target.investigated_as=transcription+factor&files.file_type=bigWig"
+
+# download only metadata.tsv file (with first link in files.txt)
 head -n 1 ENCODE/files.txt \
 | wget -P ENCODE -i -
 
