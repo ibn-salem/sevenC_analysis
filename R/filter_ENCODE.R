@@ -71,12 +71,13 @@ meta <- meta %>%
 # reorder columns to have important column at beginning
 df <- meta %>%
   select(`File accession`, TF, `Output type`, 
-         rep, file_nrep, exp_nrep, Lab, size, everything())
+         rep, file_nrep, exp_nrep, Lab, size, everything()) %>%
+  filter(`Biosample term name` == "GM12878")
+  
 
 
 # utils:::format.object_size(x, format="auto")
 plotDF <- df %>%
-  filter(`Biosample term name` == "GM12878") %>%
   # filter(Lab == "ENCODE Processing Pipeline") %>%
   group_by(`Output type`, file_nrep) %>%
   summarise(
@@ -112,8 +113,23 @@ p <- df %>%
 ggsave(str_c(outPrefix, ".size_by_outputType_and_nrep.boxplot.pdf"))
 
 
-
 # Filter for used data sets -----------------------------------------------
+df %>% 
+  filter(`Output type` %in% c("signal")) %>%
+  distinct(TF) %>%
+  summarize(
+    nUsed = sum(TF %in% useTFs),
+    percentUsed = nUsed / length(useTFs) * 100,
+    n = n()
+  )
+  
+  # filter(`Biological replicate(s)` == "1" | is.na(rep)) %>% 
+  # filter(map_lgl(rep, setequal, 1:2) | is.na(rep)) %>% 
+  filter(file_nrep == 2 | `Output type` == "raw signal") %>% 
+  distinct(`Output type`, TF, .keep_all = TRUE) %>%
+  mutate(usedTF = TF %in% useTFs) %>%
+  arrange(desc(usedTF), desc(`Output type`)) %>%
+  mutate(filePath = file.path("data", "ENCODE", "Experiments", basename(`File download URL`)))
 
 
   
