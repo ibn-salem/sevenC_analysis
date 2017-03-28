@@ -10,6 +10,9 @@ require(stringr)
 
 # 0) Set parameter --------------------------------------------------------
 
+# True loops in GM12878 from Rao et al:
+LoopRao2014_GM12878_File <- 
+  "data/Rao2014/GSE63525_GM12878_primary+replicate_HiCCUPS_looplist_with_motifs.txt"
 
 # work only on subset here:
 
@@ -27,6 +30,8 @@ useTFs <- c(
 
 # 1) select motifs and parse input data -----------------------------------
 ancGR <- chromloop::motif.hg19.CTCF
+
+seqInfo <- seqinfo(chromloop::motif.hg19.CTCF)
 
 # parse metatdata table for input files
 meta <- read_tsv("data/ENCODE/metadata.flt.tsv")
@@ -60,6 +65,9 @@ for (i in seq_along(meta$TF)) {
 # 3) build InteractonSet object -------------------------------------------
 gi <- chromloop::getCisPairs(ancGR, maxDist = 10^6)
 
+# add strand combinations
+gi <- chromloop::addStrandCombination(gi)
+
 # 4) compute correlations -------------------------------------------------
 for (i in seq_along(meta$TF)) {
   gi <- chromloop::applyToCloseGI(gi, 
@@ -69,8 +77,22 @@ for (i in seq_along(meta$TF)) {
 }
 
 # 5) add ture loops -------------------------------------------------------
+trueLoops <- chromloop::parseLoopsRao(
+  LoopRao2014_GM12878_File, seqinfo = seqInfo)
+
+# ol <- IRanges::overlapsAny(gi, trueLoops)
+# gi$Loop_Rao_GM12878 <- factor(ol, c(FALSE, TRUE), c("No loop", "Loop"))
+
+gi <- addInteractionSupport(gi, trueLoops, "Loop_Rao_GM12878")
+
 
 # 6) predict loops --------------------------------------------------------
+df <- as_tibble(as.data.frame(mcols(gi)))
+
+df %>%
+  ggplot(aes(cor_ZNF143, fill = strandOrientation)) + 
+  geom_histogram() + 
+  facet_grid(strandOrientation ~ .)
 
 # 7)  Analyse performace --------------------------------------------------
 
