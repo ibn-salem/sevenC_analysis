@@ -122,15 +122,16 @@ df %>%
     percentUsed = nUsed / length(useTFs) * 100,
     n = n()
   )
-  
-  # filter(`Biological replicate(s)` == "1" | is.na(rep)) %>% 
-  # filter(map_lgl(rep, setequal, 1:2) | is.na(rep)) %>% 
-  filter(file_nrep == 2 | `Output type` == "raw signal") %>% 
-  distinct(`Output type`, TF, .keep_all = TRUE) %>%
-  mutate(usedTF = TF %in% useTFs) %>%
-  arrange(desc(usedTF), desc(`Output type`)) %>%
-  mutate(filePath = file.path("data", "ENCODE", "Experiments", basename(`File download URL`)))
 
+
+  # # filter(`Biological replicate(s)` == "1" | is.na(rep)) %>% 
+  # # filter(map_lgl(rep, setequal, 1:2) | is.na(rep)) %>% 
+  # filter(file_nrep == 2 | `Output type` == "raw signal") %>% 
+  # distinct(`Output type`, TF, .keep_all = TRUE) %>%
+  # mutate(usedTF = TF %in% useTFs) %>%
+  # arrange(desc(usedTF), desc(`Output type`)) %>%
+  # mutate(filePath = file.path("data", "ENCODE", "Experiments", basename(`File download URL`)))
+  # 
 
   
 # filter for "signal" as output with combined replicate (is NA here) and only GM12878 cell line
