@@ -70,15 +70,15 @@ for CELL in ${RAO_CELLS} ; do
     wget -P Rao2014 ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE63nnn/GSE63525/suppl/GSE63525_${CELL}_HiCCUPS_looplist_with_motifs.txt.gz
 
     # unzip 
-    gunzip Rao2014/GSE63525_${CELL}_Arrowhead_domainlist.txt.gz
-    gunzip Rao2014/GSE63525_${CELL}_HiCCUPS_looplist.txt.gz
+    # gunzip Rao2014/GSE63525_${CELL}_Arrowhead_domainlist.txt.gz
+    # gunzip Rao2014/GSE63525_${CELL}_HiCCUPS_looplist.txt.gz
     gunzip Rao2014/GSE63525_${CELL}_HiCCUPS_looplist_with_motifs.txt.gz
         
-    # re-format TADs into bed file
-    tail -n +2 Rao2014/GSE63525_${CELL}_Arrowhead_domainlist.txt \
-      |cut -f 1-3 \
-      | sed -e 's/^/chr/' \
-      > Rao2014/GSE63525_${CELL}_Arrowhead_domainlist.txt.bed 
+    # # re-format TADs into bed file
+    # tail -n +2 Rao2014/GSE63525_${CELL}_Arrowhead_domainlist.txt \
+    #   |cut -f 1-3 \
+    #   | sed -e 's/^/chr/' \
+    #   > Rao2014/GSE63525_${CELL}_Arrowhead_domainlist.txt.bed 
 done
 
 
