@@ -2,6 +2,11 @@
 .Rhistory
 .RData
 .Ruserdata
+
+# ignore html report output
+chromloop_analysis.html
+
+# ignore raw data and computed results
 data/README.html
 data/ENCODE/*
 data/Rao2014/*

@@ -1,0 +1,161 @@
+---
+title: "Chromatin Loop Predcition Analysis"
+author: "Jonas Ibn-Salem"
+date: "29 März 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+require(chromloop)   # devtools::install_github("ibn-salem/chromloop")
+require(tidyverse)
+require(stringr)
+require(InteractionSet)
+
+```
+
+## R Markdown
+
+Chromatin looping interactions are predcited from correlation of ChIP-seq profiles at CTCF sequence motifs. 
+
+```{r parameter}
+
+# True loops in GM12878 from Rao et al:
+LoopRao2014_GM12878_File <- 
+  "data/Rao2014/GSE63525_GM12878_primary+replicate_HiCCUPS_looplist_with_motifs.txt"
+
+metadataFile <- "data/ENCODE/metadata.flt.tsv"
+# work only on subset here:
+
+useTFs <- c(
+  "ZNF143",
+  "STAT1",
+  "ZNF274",
+  "ZNF384",
+  "CTCF",
+  "RAD21",
+  "POLR2A",
+  "NFYB"
+)
+
+```
+
+
+```{r data, cached = TRUE, dependson = "parameter"}
+
+ancGR <- chromloop::motif.hg19.CTCF
+
+seqInfo <- seqinfo(chromloop::motif.hg19.CTCF)
+
+# get all pairs within 1M distance
+gi <- chromloop::getCisPairs(ancGR, maxDist = 10^6)
+
+# add strand combinations
+gi <- chromloop::addStrandCombination(gi)
+
+
+# parse metatdata table for input files
+meta <- read_tsv(metadataFile)
+
+# # filter input data
+# meta <- meta %>% 
+#   filter(TF %in% useTFs) %>%
+#   mutate(TF = parse_factor(TF, levels = useTFs)) %>%
+#   arrange(TF)
+
+# filter input data
+meta <- meta %>% 
+  filter(TF %in% useTFs) %>%
+  # filter(`Output type` == "fold change over control") %>%
+  filter(`Output type` == "raw signal") %>%
+  mutate(TF = parse_factor(TF, intersect(useTFs, .$TF))) %>%
+  arrange(TF)
+
+# # DEBUG use only two examples here:
+# meta <- meta %>%
+#   filter(TF %in% c("POLR2A", "CTCF"))
+
+```
+
+
+```{r coverage, cached = TRUE, dependson = "data"}
+# covRle <- lapply(meta$filePath, parseBigWigToRle, seqInfo = seqinfo(ancGR))
+for (i in seq_along(meta$TF)) {
+  regions(gi) <- chromloop::addCovToGR(regions(gi), meta$filePath[i], window = 10, 
+                                 colname = paste0("cov_", meta$TF[i]))
+}
+```
+
+```{r cor, cached = TRUE, dependson = "coverage"}
+
+for (i in seq_along(meta$TF)) {
+  gi <- chromloop::applyToCloseGI(gi, 
+                                  datcol = paste0("cov_", meta$TF[i]),
+                                  fun = cor, 
+                                  colname = paste0("cor_", meta$TF[i]))
+}
+
+```
+
+```{r true-loops, cached = TRUE, dependson = "data"}
+# parse loops
+trueLoops <- chromloop::parseLoopsRao(
+  LoopRao2014_GM12878_File, seqinfo = seqInfo)
+
+# ol <- IRanges::overlapsAny(gi, trueLoops)
+# gi$Loop_Rao_GM12878 <- factor(ol, c(FALSE, TRUE), c("No loop", "Loop"))
+
+gi <- addInteractionSupport(gi, trueLoops, "Loop_Rao_GM12878")
+
+```
+
+## Analyse Correlation 
+
+```{r analyse-cor}
+df <- as_tibble(as.data.frame(mcols(gi)))
+
+df %>%
+  # filter(Loop_Rao_GM12878 == "Loop") %>%
+  ggplot(aes(x = Loop_Rao_GM12878, cor_CTCF, fill = strandOrientation)) + 
+  geom_violin() + 
+  facet_grid( ~ strandOrientation, scales = "free_y")
+
+
+
+df %>%
+  # filter(Loop_Rao_GM12878 == "Loop") %>%
+  ggplot(aes(cor_CTCF, fill = strandOrientation)) + 
+  geom_histogram(aes(y=..density..)) + 
+  facet_grid(strandOrientation ~ Loop_Rao_GM12878, scales = "free_y")
+
+
+df %>%
+  # filter(Loop_Rao_GM12878 == "Loop") %>%
+  ggplot(aes(dist, fill = strandOrientation)) + 
+  geom_histogram(aes(y=..density..)) + 
+  facet_grid(strandOrientation ~ Loop_Rao_GM12878, scales = "free_y")
+
+df %>%
+  group_by(Loop_Rao_GM12878, strandOrientation) %>%
+  summarise(
+    n = n()
+  ) 
+
+df %>% 
+  ggplot(aes(Loop_Rao_GM12878, cor_ZNF143)) + 
+  geom_violin()
+
+
+```
+
+
+
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
