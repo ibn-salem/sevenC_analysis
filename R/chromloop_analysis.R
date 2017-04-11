@@ -21,6 +21,10 @@ dir.create(dirname(outPrefix), showWarnings = FALSE)
 LoopRao2014_GM12878_File <- 
   "data/Rao2014/GSE63525_GM12878_primary+replicate_HiCCUPS_looplist_with_motifs.txt"
 
+# ChIA-PET loops in GM12878 from Tang et al 2015:
+LoopTang2015_GM12878_File <- 
+  "data/Tang2015/GSM1872886_GM12878_CTCF_PET_clusters.txt"
+
 metadataFile <- "data/ENCODE/metadata.flt.tsv"
 outtypeMetadataFile <- "data/ENCODE/metadata.fltOuttype.tsv"
 # work only on subset here:
@@ -51,13 +55,16 @@ if (!GI_LOCAL) {
   
   
   # parse loops
-  trueLoops <- chromloop::parseLoopsRao(
+  trueLoopsRao <- chromloop::parseLoopsRao(
     LoopRao2014_GM12878_File, seqinfo = seqInfo)
+  trueLoopsTang2015 <- chromloop::parseLoopsTang2015(
+    LoopTang2015_GM12878_File, seqinfo = seqInfo)
   
   # ol <- IRanges::overlapsAny(gi, trueLoops)
   # gi$Loop_Rao_GM12878 <- factor(ol, c(FALSE, TRUE), c("No loop", "Loop"))
   
-  gi <- addInteractionSupport(gi, trueLoops, "Loop_Rao_GM12878")
+  gi <- addInteractionSupport(gi, trueLoopsRao, "Loop_Rao_GM12878")
+  gi <- addInteractionSupport(gi, trueLoopsTang2015, "Loop_Tang2015_GM12878")
   
   # save file for faster reload
   save(gi, file = paste0(outPrefix, ".gi.tmp.Rdata"))
@@ -175,40 +182,40 @@ if (!GI_LOCAL ) {
 
 # Analyse loopps --------------------------------------------------------
 
-df <- as_tibble(as.data.frame(mcols(gi)))
+df <- as_tibble(as.data.frame(mcols(gi))) %>%
+  mutate(loop = Loop_Tang2015_GM12878)
 
 # plot correlation of CTCF by strand and loop
 df %>%
   # sample_n(size = 10^6) %>%
   # filter(Loop_Rao_GM12878 == "Loop") %>%
-  ggplot(aes(x = Loop_Rao_GM12878, cor_CTCF, fill = strandOrientation)) + 
+  ggplot(aes(x = loop, cor_CTCF, fill = strandOrientation)) + 
   geom_violin() + 
   geom_boxplot(width = 0.2, fill = "white") + 
   facet_grid( ~ strandOrientation, scales = "free_y") + 
   theme_bw()
 
-ggsave(paste0(outPrefix, "cor_CTCF_by_strand_and_Loop_Rao_GM12878.violin.pdf"),
+ggsave(paste0(outPrefix, "cor_CTCF_by_strand_and_loop.violin.pdf"),
        w = 6, h = 6)
 
 df %>%
   sample_n(size = 10^6) %>%
-  # filter(Loop_Rao_GM12878 == "Loop") %>%
   ggplot(aes(dist, fill = strandOrientation)) + 
   geom_histogram(aes(y = ..density..)) + 
-  facet_grid(strandOrientation ~ Loop_Rao_GM12878, scales = "free_y") + 
+  facet_grid(strandOrientation ~ loop, scales = "free_y") + 
   theme_bw()
 ggsave(paste0(outPrefix, "dist_by_strand_and_Loop_Rao_GM12878.histogram.pdf"),
        w = 6, h = 6)
 
 df %>%
-  group_by(Loop_Rao_GM12878, strandOrientation) %>%
+  group_by(loop, strandOrientation) %>%
   summarise(
     n = n()
   ) %>% 
   ggplot(aes(x = strandOrientation, y = n, fill = strandOrientation)) + 
   geom_bar(stat = "identity") +
   geom_text(aes(label = n), vjust = 2) +
-  facet_grid(Loop_Rao_GM12878 ~ . , scales = "free_y") + 
+  facet_grid(loop ~ . , scales = "free_y") + 
   theme_bw()
 
 ggsave(paste0(outPrefix, "n_by_strand_and_Loop_Rao_GM12878.barplot.pdf"),
@@ -231,22 +238,23 @@ test <- predDF[testCases,]
 
 # # get predictions from single TF with dist
 # factPred <- lapply(ORDERED_FACTORS, function(FACT){
-FACT <- "CTCF"  
+# FACT <- "CTCF"  
 
-design <- as.formula(paste0("loop ~ ", " dist +", "cor_", FACT))
+# design <- as.formula(paste0("loop ~ ", " dist +", "cor_", FACT))
 
-model <- glm(
-  design, 
-  family = binomial(link = 'logit'), 
-  data = train)
-
-test <- test %>% 
-  add_predictions(model)
+# model <- glm(
+#   design, 
+#   family = binomial(link = 'logit'), 
+#   data = train)
+# 
+# test <- test %>% 
+#   add_predictions(model)
 
 # predList <- lapply(outtypeMeta$name, function(name){
 for (name in outtypeMeta$name) {
   
-  design <- as.formula(paste0("loop ~ ", " dist + ", "cor_", str_replace(name, "-", "_")))
+  # design <- as.formula(paste0("loop ~ ", " dist + strandOrientation + ", "cor_", str_replace(name, "-", "_")))
+  design <- as.formula(paste0("loop ~ ", "cor_", str_replace(name, "-", "_")))
   
   model <- glm(
     design, 
@@ -329,10 +337,26 @@ p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = `Output type`)) +
   theme_bw() + theme(axis.text.x = element_text(angle = 60, hjust = 1)) + 
   geom_text(aes(label = round(aucs, 2)), vjust = 1.5)
 
-ggsave(g, file=paste0(outPrefix, ".outtypeMeta.AUC_ROC_PRC.by_OutputType_and_TF.barplot.pdf"), w = 7, h = 7)
+ggsave(p, file=paste0(outPrefix, ".outtypeMeta.AUC_ROC_PRC.by_OutputType_and_TF.barplot.pdf"), w = 7, h = 7)
 
 
-  # scale_fill_manual(values = c(COL_FACT, "darkgray", "lightgray"))
-# ggsave(file=paste0(outPrefix, ".", LOOP_COL, ".", CELL, "_w", WINDOW, "_b", BIN_SIZE, ".ChIP-seq_profile.cor.logit.TFwithDist_and_full_model.ROC_PRC_AUC.barplot.pdf"), w=7, h=7)
+# get ROC plots
+aucDFroc <- aucDF %>% 
+  filter(curvetypes == "ROC")
+
+g <- autoplot(cuves, "ROC") + 
+  annotate("text", x = .6, y = seq(0, .25, length.out = nrow(aucDFroc)), 
+           label=paste0(aucDFroc$modnames, ": AUC=", signif(aucDFroc$aucs,3)))
+
+# ggsave(g, file=paste0(outPrefix, ".", LOOP_COL, ".", CELL, ".ChIP-seq_cov_across_all.cor.ROC.curve.pdf"), w=7, h=7)
+
+# get PRC plots
+aucDFprc <- aucDF %>% 
+  filter(curvetypes == "PRC")
+
+g <- autoplot(cuves, "PRC") + 
+  annotate("text", x = .6, y = seq(0, .25, length.out = nrow(aucDFprc)), 
+           label = paste0(aucDFprc$modnames, ": AUC=", signif(aucDFprc$aucs,3)))
+g
 
 
