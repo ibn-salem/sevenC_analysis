@@ -94,6 +94,7 @@ wget -P Tang2015 ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1872nnn/GSM1872889/su
 
 # unzip all files
 gunzip Tang2015/*.gz
+
 #=======================================================================
 # ENCODE batch download 
 #=======================================================================
