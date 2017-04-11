@@ -122,6 +122,8 @@ head -n 1 ENCODE/files.txt \
 mkdir -p ENCODE/Experiments
 cd ENCODE/Experiments 
 xargs -n 1 curl -O -L < ../URLs.flt.txt
+xargs -n 1 curl -O -L < ../URLs.fltOuttype.txt
+
 cd ../..
 
 

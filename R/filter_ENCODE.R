@@ -159,18 +159,7 @@ sizeDF <- flt %>%
 usedFlt <- flt %>%
   filter(usedTF)
 
-
-# %>%
-#   filter(TF %in% useTFs)
-  
-
-# is.na(`Biological replicate(s)`) | 
-# %>%
-#   distinct(TF, Lab, .keep_all = TRUE)
-
-#-------------------------------------------------------------------------------
-# Output filtered URL list and metadata table
-#-------------------------------------------------------------------------------
+# Output filtered URL list and metadata table -----------------------------
 
 flt %>% 
   select(`File download URL`) %>%
@@ -182,7 +171,32 @@ flt %>%
   select(-rep) %>%
   write_tsv(path = file.path("data", "ENCODE", "metadata.flt.tsv"))
 
-# do the same for filtered files
+
+# Filter for Output tpye tests -------------------------------------------------
+
+fltOuttype <- df %>% 
+  # filter(`Output type` %in% c("raw signal", "fold change over control")) %>%
+  # filter(`Biological replicate(s)` == "1" | is.na(rep)) %>% 
+  # filter(map_lgl(rep, setequal, 1:2) | is.na(rep)) %>% 
+  # filter(file_nrep == 2 | `Output type` == "raw signal") %>% 
+  filter(rep == "1" | is.na(rep)) %>%
+  filter(`Biosample term name` == "GM12878") %>%
+  filter(TF %in% c("CTCF", "REST", "STAT1")) %>%
+  distinct(`Output type`, TF, .keep_all = TRUE) %>%
+  mutate(usedTF = TF %in% useTFs) %>%
+  arrange(desc(TF), desc(`Output type`)) %>%
+  mutate(filePath = file.path("data", "ENCODE", "Experiments", basename(`File download URL`)))
+
+fltOuttype %>% 
+  select(`File download URL`) %>%
+  write_tsv(
+    path = file.path("data", "ENCODE", "URLs.fltOuttype.txt"),
+    col_names = FALSE)
+
+fltOuttype %>%
+  select(`File accession`:Lab, -rep, filePath) %>%
+  write_tsv(path = file.path("data", "ENCODE", "metadata.fltOuttype.tsv"))
+
 
 #-------------------------------------------------------------------------------
 # download files

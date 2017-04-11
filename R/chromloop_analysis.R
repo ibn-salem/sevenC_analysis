@@ -22,6 +22,7 @@ LoopRao2014_GM12878_File <-
   "data/Rao2014/GSE63525_GM12878_primary+replicate_HiCCUPS_looplist_with_motifs.txt"
 
 metadataFile <- "data/ENCODE/metadata.flt.tsv"
+outtypeMetadataFile <- "data/ENCODE/metadata.fltOuttype.tsv"
 # work only on subset here:
 
 useTFs <- c(
@@ -82,6 +83,25 @@ meta <- read_tsv(metadataFile,
                    usedTF = col_logical()
                  ))
 
+# parse metatdata table for input files
+outtypeMeta <- read_tsv(outtypeMetadataFile,
+                  col_types = cols(
+                    `File accession` = col_character(),
+                    TF = col_character(),
+                    `Output type` = col_character(),
+                    file_nrep = col_character(),
+                    exp_nrep = col_integer(),
+                    Lab = col_character()
+                  )
+                 )
+
+# add label 
+outtypeMeta <- outtypeMeta %>% 
+  mutate(name = str_c(TF, "_", str_replace_all(`Output type`, "[ -]", "_"))) %>% 
+  select(name, everything())
+
+
+
 # # filter input data
 # meta <- meta %>% 
 #   filter(TF %in% useTFs) %>%
@@ -102,7 +122,7 @@ meta <- meta %>%
 
 # Annotae with coverage and correlation -------------------------------------
 
-for (i in seq_along(meta$TF)) {
+for (i in seq_len(nrow(meta))) {
   regions(gi) <- chromloop::addCovToGR(
     regions(gi), 
     meta$filePath[i], 
@@ -120,6 +140,30 @@ for (i in seq_along(meta$TF)) {
     colname = paste0("cor_", meta$TF[i])
   )
 }
+
+# add coverage and correalation for output type analysis
+
+for (i in seq_len(nrow(outtypeMeta))) {
+  
+  stopifnot(file.exists(outtypeMeta$filePath[i]))
+  
+  regions(gi) <- chromloop::addCovToGR(
+    regions(gi), 
+    outtypeMeta$filePath[i], 
+    window = 10, 
+    colname = paste0("cov_", outtypeMeta$name[i])
+  )
+  
+  # add correlations
+  gi <- chromloop::applyToCloseGI(
+    gi, 
+    datcol = paste0("cov_", outtypeMeta$name[i]),
+    fun = cor, 
+    colname = paste0("cor_", outtypeMeta$name[i])
+  )  
+  
+}
+
 
 # save file for faster reload
 if (!GI_LOCAL ) {
@@ -177,7 +221,8 @@ nLoop <- sum(df$Loop_Rao_GM12878 == "Loop")
 predDF <- df %>%
   mutate(loop = Loop_Rao_GM12878) %>%
   group_by(loop) %>%
-  sample_n(nLoop) 
+  sample_n(nLoop) %>% 
+  ungroup() 
 
 # dived in training and test set by taking 10.000 randomly for testing
 testCases <- sample.int(nrow(predDF), size = round(nrow(predDF)/10))
@@ -197,6 +242,21 @@ model <- glm(
 
 test <- test %>% 
   add_predictions(model)
+
+# predList <- lapply(outtypeMeta$name, function(name){
+for (name in outtypeMeta$name) {
+  
+  design <- as.formula(paste0("loop ~ ", " dist + ", "cor_", str_replace(name, "-", "_")))
+  
+  model <- glm(
+    design, 
+    family = binomial(link = 'logit'), 
+    data = train)
+  
+  test <- test %>% 
+    add_predictions(model, var = str_c("pred_", name))
+  
+}
 
 # Analyse performace --------------------------------------------------
 
@@ -243,4 +303,36 @@ g <- autoplot(cuves, "PRC") +
            label = paste0(aucDFprc$modnames, ": AUC=", signif(aucDFprc$aucs,3)))
 
 # ggsave(g, file=paste0(outPrefix, ".", LOOP_COL, ".", CELL, ".ChIP-seq_cov_across_all.cor.PRC.curve.pdf"), w=7, h=7)
+
+# Analyse performace for different output types -------------------------------------
+
+# plot ROC and PRC
+modelData <-  mmdata(
+  scores = as.list(select(test, one_of(str_c("pred_", outtypeMeta$name)))),
+  labels = test$loop,
+  modnames = outtypeMeta$name,
+  posclass = "Loop"
+)
+
+# caluclate ROC and PRC
+cuves <- evalmod(modelData)
+
+# get AUC of ROC and PRC
+aucDF <- auc(cuves) %>% 
+  left_join(outtypeMeta, by = c("modnames" = "name"))
+
+# barplot of AUCs of ROC and PRC
+
+p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = `Output type`)) +
+  geom_bar(stat = "identity", color = "black") + 
+  facet_grid(curvetypes ~ TF, scales = "free_x") + 
+  theme_bw() + theme(axis.text.x = element_text(angle = 60, hjust = 1)) + 
+  geom_text(aes(label = round(aucs, 2)), vjust = 1.5)
+
+ggsave(g, file=paste0(outPrefix, ".outtypeMeta.AUC_ROC_PRC.by_OutputType_and_TF.barplot.pdf"), w = 7, h = 7)
+
+
+  # scale_fill_manual(values = c(COL_FACT, "darkgray", "lightgray"))
+# ggsave(file=paste0(outPrefix, ".", LOOP_COL, ".", CELL, "_w", WINDOW, "_b", BIN_SIZE, ".ChIP-seq_profile.cor.logit.TFwithDist_and_full_model.ROC_PRC_AUC.barplot.pdf"), w=7, h=7)
+
 
