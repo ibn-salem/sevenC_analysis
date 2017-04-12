@@ -27,6 +27,8 @@ LoopTang2015_GM12878_File <-
 
 metadataFile <- "data/ENCODE/metadata.flt.tsv"
 outtypeMetadataFile <- "data/ENCODE/metadata.fltOuttype.tsv"
+ucscMetaFile <- "data/ENCODE_UCSC_FILES.tsv"
+
 # work only on subset here:
 
 useTFs <- c(
@@ -102,11 +104,21 @@ outtypeMeta <- read_tsv(outtypeMetadataFile,
                   )
                  )
 
-# add label 
+# add name 
 outtypeMeta <- outtypeMeta %>% 
   mutate(name = str_c(TF, "_", str_replace_all(`Output type`, "[ -]", "_"))) %>% 
   select(name, everything())
 
+# parse ucscMeta file
+ucscMeta <- read_tsv(ucscMetaFile,
+                     col_types = cols(
+                       file = col_character(),
+                       TF = col_character()
+                     ))
+
+ucscMeta <- ucscMeta %>% 
+  mutate(filePath = file.path("data", "ENCODE", "UCSC", file)) %>% 
+  mutate(name = TF)
 
 
 # # filter input data
@@ -171,25 +183,86 @@ for (i in seq_len(nrow(outtypeMeta))) {
   
 }
 
+# add coverage and correalation for UCSC files
+
+for (i in seq_len(nrow(ucscMeta))) {
+  
+  stopifnot(file.exists(ucscMeta$filePath[i]))
+  
+  regions(gi) <- chromloop::addCovToGR(
+    regions(gi), 
+    ucscMeta$filePath[i], 
+    window = 10, 
+    colname = paste0("cov_", ucscMeta$TF[i])
+  )
+  
+  # add correlations
+  gi <- chromloop::applyToCloseGI(
+    gi, 
+    datcol = paste0("cov_", ucscMeta$TF[i]),
+    fun = cor, 
+    colname = paste0("cor_", ucscMeta$TF[i])
+  )  
+  
+}
 
 # save file for faster reload
 if (!GI_LOCAL ) {
   save(gi, file = paste0(outPrefix, ".gi.Rdata"))
 } else {
-  # load(paste0(outPrefix, ".gi.Rdata"))  
+  load(paste0(outPrefix, ".gi.Rdata"))  
 }
 
-
+#-------------------------------------------------------------------------------
 # Analyse loopps --------------------------------------------------------
+#-------------------------------------------------------------------------------
 
 df <- as_tibble(as.data.frame(mcols(gi))) %>%
-  mutate(loop = Loop_Tang2015_GM12878)
+  mutate(
+    id = row_number(),
+    loop = Loop_Tang2015_GM12878
+    ) %>% 
+  select(id, loop, everything(), -Loop_Rao_GM12878, -Loop_Tang2015_GM12878)
+
+save(df, file = paste0(outPrefix, ".df.Rdata"))  
+
+# make a tidy DF
+tidyDF <- df %>% 
+  gather(starts_with("cor_"), key = type, value = cor) 
+
+tidyDF <- tidyDF %>% 
+  # mutate(type = str_replace(type, "^cor_", ""))
+  mutate(type = str_sub(type, 5))
+
+
+# NAs in correlation ------------------------------------------------------
+
+naDF <- tidyDF %>% 
+  group_by(type, loop) %>% 
+  summarise(
+    n = n(),
+    nNA = sum(is.na(cor)),
+    percentNA = nNA / n * 100
+  ) 
+
+naDF <- naDF %>% 
+  left_join(outtypeMeta, by = c("type" = "name"))
+
+p <- ggplot(naDF, aes(x = type, y = percentNA, fill = `Output type`)) +
+  geom_bar(stat = "identity", color = "black") + 
+  facet_grid(loop ~ TF, scales = "free_x") + 
+  theme_bw() + theme(axis.text.x = element_text(angle = 60, hjust = 1)) + 
+  geom_text(aes(label = round(percentNA, 2)), vjust = 1.5)
+ggsave(p, file=paste0(outPrefix, ".outtypeMeta.percentNA.by_OutputType_and_TF_and_loop.barplot.pdf"), w = 7, h = 7)
+
+  
+corLabel <- outtypeMeta$name[1]
 
 # plot correlation of CTCF by strand and loop
 df %>%
   # sample_n(size = 10^6) %>%
   # filter(Loop_Rao_GM12878 == "Loop") %>%
-  ggplot(aes(x = loop, cor_CTCF, fill = strandOrientation)) + 
+  ggplot(aes_string(x = "loop", y = paste0("cor_", corLabel) , fill = "strandOrientation")) + 
   geom_violin() + 
   geom_boxplot(width = 0.2, fill = "white") + 
   facet_grid( ~ strandOrientation, scales = "free_y") + 
@@ -224,9 +297,8 @@ ggsave(paste0(outPrefix, "n_by_strand_and_Loop_Rao_GM12878.barplot.pdf"),
 # Predict loops --------------------------------------------------------
 
 # take same number of true and false interactions for training and validation
-nLoop <- sum(df$Loop_Rao_GM12878 == "Loop")
+nLoop <- sum(df$loop == "Loop")
 predDF <- df %>%
-  mutate(loop = Loop_Rao_GM12878) %>%
   group_by(loop) %>%
   sample_n(nLoop) %>% 
   ungroup() 
@@ -251,8 +323,9 @@ test <- predDF[testCases,]
 #   add_predictions(model)
 
 # predList <- lapply(outtypeMeta$name, function(name){
-for (name in outtypeMeta$name) {
-  
+# for (name in outtypeMeta$name) {
+for (name in ucscMeta$name) {
+    
   # design <- as.formula(paste0("loop ~ ", " dist + strandOrientation + ", "cor_", str_replace(name, "-", "_")))
   design <- as.formula(paste0("loop ~ ", "cor_", str_replace(name, "-", "_")))
   

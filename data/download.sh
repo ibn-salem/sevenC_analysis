@@ -128,7 +128,28 @@ xargs -n 1 curl -O -L < ../URLs.fltOuttype.txt
 cd ../..
 
 
+#=======================================================================
+# ENCODE from UCSC 
+#=======================================================================
 
+SELECTED_FIELS="
+wgEncodeSydhTfbsGm12878Stat1StdSig.bigWig
+wgEncodeSydhTfbsGm12878Stat3IggmusSig.bigWig
+wgEncodeSydhTfbsGm12878Yy1StdSig.bigWig
+wgEncodeSydhTfbsGm12878Znf143166181apStdSig.bigWig
+wgEncodeSydhTfbsGm12878Znf274StdSig.bigWig
+wgEncodeSydhTfbsGm12878Znf384hpa004051IggmusSig.bigWig
+wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdSig.bigWig
+wgEncodeSydhTfbsGm12878Rad21IggrabSig.bigWig
+wgEncodeSydhTfbsGm12878Pol2IggmusSig.bigWig
+wgEncodeSydhTfbsGm12878Pol2StdSig.bigWig
+wgEncodeSydhTfbsGm12878NfkbTnfaIggrabSig.bigWig
+"
+
+mkdir -p ENCODE/UCSC
+for F in $SELECTED_FIELS; do
+    wget -P ENCODE/UCSC http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/${F} 
+done
 
 
 
