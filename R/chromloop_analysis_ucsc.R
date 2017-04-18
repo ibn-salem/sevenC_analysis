@@ -9,16 +9,22 @@ require(stringr)      # for string functions
 require(modelr)       # for tidy modeling
 require(precrec)      # for ROC and PRC curves
 require(RColorBrewer)   # for nice colors
+require(rtracklayer)  # to import() BED files
+require(colorRamps)  # to pick different colors
 
 # 0) Set parameter --------------------------------------------------------
 
 # use previously saved gi object?
 GI_LOCAL <- TRUE
 
-COL_TF = c(colorRampPalette(brewer.pal(8, "Set1"))(9), "#80da3a")
+# COL_TF = c(colorRampPalette(brewer.pal(8, "Set1"))(9), "#80da3a")
+COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(9), "#80da3a")
+# COL_TF = colorRamps::primary.colors(12)
+
 #barplot(1:10, col=COL_TF)
 COL_LOOP = brewer.pal(8, "Dark2")[c(8,5)] #[c(2,1,5,6)]
 
+# outPrefix <- file.path("results", "v01_UCSC_motifs")
 outPrefix <- file.path("results", "v01_UCSC")
 dir.create(dirname(outPrefix), showWarnings = FALSE)
 
@@ -27,43 +33,19 @@ LoopRao2014_GM12878_File <-
   "data/Rao2014/GSE63525_GM12878_primary+replicate_HiCCUPS_looplist_with_motifs.txt"
 
 # ChIA-PET loops in GM12878 from Tang et al 2015:
-LoopTang2015_GM12878_File <- 
-  "data/Tang2015/GSM1872886_GM12878_CTCF_PET_clusters.txt"
+LoopTang2015_GM12878_Files <- c(
+  "data/Tang2015/GSM1872886_GM12878_CTCF_PET_clusters.txt",
+  "data/Tang2015/GSM1872887_GM12878_RNAPII_PET_clusters.txt")
+
+CaptureHiC_Files <- c(
+  "data/Mifsud2015/TS5_GM12878_promoter-promoter_significant_interactions.txt",
+  "data/Mifsud2015/TS5_GM12878_promoter-other_significant_interactions.txt"
+)
 
 ucscMetaFile <- "data/ENCODE_UCSC_FILES.tsv"
 
-# Select motifs and parse input data -----------------------------------
-if (!GI_LOCAL) {
-  
-  ancGR <- chromloop::motif.hg19.CTCF
-  
-  seqInfo <- seqinfo(chromloop::motif.hg19.CTCF)
-  
-  # get all pairs within 1M distance
-  gi <- chromloop::getCisPairs(ancGR, maxDist = 10^6)
-  
-  # add strand combinations
-  gi <- chromloop::addStrandCombination(gi)
-  
-  
-  # parse loops
-  trueLoopsRao <- chromloop::parseLoopsRao(
-    LoopRao2014_GM12878_File, seqinfo = seqInfo)
-  trueLoopsTang2015 <- chromloop::parseLoopsTang2015(
-    LoopTang2015_GM12878_File, seqinfo = seqInfo)
-  
-  # ol <- IRanges::overlapsAny(gi, trueLoops)
-  # gi$Loop_Rao_GM12878 <- factor(ol, c(FALSE, TRUE), c("No loop", "Loop"))
-  
-  gi <- addInteractionSupport(gi, trueLoopsRao, "Loop_Rao_GM12878")
-  gi <- addInteractionSupport(gi, trueLoopsTang2015, "Loop_Tang2015_GM12878")
-  
-  # save file for faster reload
-  save(gi, file = paste0(outPrefix, ".gi.tmp.Rdata"))
-  
-}else{
-  load(paste0(outPrefix, ".gi.tmp.Rdata"))  
-}
+CTCF_motif_file <- "data/factorbook/factorbookMotifPos.txt.CTCF.bed"
+MIN_MOTIF_SCORE <- 3
 
 # Parse and filter input ChiP-seq data  -----------------------------------
 
@@ -78,15 +60,70 @@ ucscMeta <- ucscMeta %>%
   mutate(filePath = file.path("data", "ENCODE", "UCSC", file)) %>% 
   mutate(name = TF)
 
+# Select motifs and parse input data -----------------------------------
+if (!GI_LOCAL) {
+  
+  ancGR <- chromloop::motif.hg19.CTCF
+  
+  # # filter for p-valu <= 10^-6
+  # ancGR <- ancGR[ancGR$sig >= 6]
+
+  seqInfo <- seqinfo(chromloop::motif.hg19.CTCF)
+  
+  # seqInfo <- seqinfo(chromloop::motif.hg19.CTCF)
+  # ancGR <- import(CTCF_motif_file, format="BED", seqinfo=seqInfo)
+  # 
+  # # filter for high scoring motifs
+  # ancGR <- ancGR[score(ancGR) >= MIN_MOTIF_SCORE]
+  # 
+  # # flip strand (to match motif of Rao et al. 2014)
+  # strand(ancGR) <- ifelse(strand(ancGR) == "+", "-", "+")
+  # ancGR <- sort(ancGR)
+  
+  # get all pairs within 1M distance
+  gi <- chromloop::getCisPairs(ancGR, maxDist = 10^6)
+  
+  # add strand combinations
+  gi <- chromloop::addStrandCombination(gi)
+  
+  
+  # parse loops
+  trueLoopsRao <- chromloop::parseLoopsRao(
+    LoopRao2014_GM12878_File, seqinfo = seqInfo)
+  trueLoopsTang2015 <- do.call(
+    "c",
+    lapply(LoopTang2015_GM12878_Files, 
+                              chromloop::parseLoopsTang2015, 
+                              seqinfo = seqInfo)
+  )
+  
+  trueCaptureHiC <- do.call(
+    "c",
+    lapply(CaptureHiC_Files,
+           chromloop::parseCaptureHiC, seqinfo = seqInfo)
+  )
+  trueCaptureHiC <- trueCaptureHiC[trueCaptureHiC$log_observed_expected >= 10]
+  # trueCaptureHiC <- chromloop::parseCaptureHiC(
+  #   CaptureHiC_Files[1], seqinfo = seqInfo)
+  
+  # ol <- IRanges::overlapsAny(gi, trueLoops)
+  # gi$Loop_Rao_GM12878 <- factor(ol, c(FALSE, TRUE), c("No loop", "Loop"))
+  
+  gi <- addInteractionSupport(gi, trueLoopsRao, "Loop_Rao_GM12878")
+  gi <- addInteractionSupport(gi, trueLoopsTang2015, "Loop_Tang2015_GM12878")
+  gi <- addInteractionSupport(gi, trueCaptureHiC, "Loop_Mifsud2015_GM12878")
+  
+  # save file for faster reload
+  save(gi, file = paste0(outPrefix, ".gi.tmp.Rdata"))
+  
+}else{
+  load(paste0(outPrefix, ".gi.tmp.Rdata"))  
+}
 
 # Annotae with coverage and correlation -------------------------------------
 
+for (i in seq_len(nrow(ucscMeta))) {
 
-# add coverage and correalation for UCSC files
-
-# for (i in seq_len(nrow(ucscMeta))) {
-for (i in 8:10) {
-    
   stopifnot(file.exists(ucscMeta$filePath[i]))
   
   regions(gi) <- chromloop::addCovToGR(
@@ -120,7 +157,11 @@ if (!GI_LOCAL ) {
 df <- as_tibble(as.data.frame(mcols(gi))) %>%
   mutate(
     id = row_number(),
-    loop = Loop_Tang2015_GM12878
+    # loopLgt = Loop_Tang2015_GM12878 == "Loop" | Loop_Rao_GM12878 == "Loop"
+    loop = factor(
+      Loop_Tang2015_GM12878 == "Loop" | Loop_Rao_GM12878 == "Loop" | Loop_Mifsud2015_GM12878 == "Loop",
+      c(FALSE, TRUE),
+      c("No loop", "Loop"))
   ) %>% 
   select(id, loop, everything(), -Loop_Rao_GM12878, -Loop_Tang2015_GM12878)
 
@@ -154,33 +195,59 @@ ggsave(p, file=paste0(outPrefix, ".percentNotNA.by_TF_and_loop.barplot.pdf"), w 
 
 
 # Compare Correlation with Boxplot
-# pvalDF <- ddply(plotDF, .(factor), summarize, p=wilcox.test( as.formula(paste("value ~ ", LOOP_COL)))$p.value)
 
-p <- ggplot(tidyDF, aes(x = loop, y = cor)) +
-  geom_boxplot(aes(color=loop), lwd=1.5) + 
+tidySubDF <- tidyDF %>% 
+  filter(TF %in% c("CTCF", "Stat1")) %>% 
+  sample_n(10^6)
+
+p <- ggplot(tidySubDF, aes(x = loop, y = cor)) +
+  geom_violin(aes(fill = loop), lwd = 1.5) + 
+  geom_boxplot(fill = "white", lwd = 1.5, width = .2) +
   facet_grid(. ~ TF) + 
-  scale_color_manual(values=COL_LOOP, guide_legend(title = "")) +
+  scale_fill_manual(values = COL_LOOP, guide_legend(title = "")) +
   theme_bw() + 
   theme(
     text = element_text(size=20), 
     axis.text.x=element_blank(), 
     legend.position = "bottom") + 
-  labs(y="Correlation of ChIP-seq signal", x="")
+  labs(y = "Correlation of ChIP-seq signal", x="")
   # geom_text(data=pvalDF, aes(label=paste0("p=", signif(p,3)), x=1.5, y=1.1), size=5)
 p
 # ggsave(p, file=paste0(outPrefix, ".", LOOP_COL, ".", CELL, "_w", WINDOW, "_b", BIN_SIZE, ".ChIP-seq_profile.cor.boxplot.pdf"), w=14, h=7)
 
+#-------------------------------------------------------------------------------
+# Debug with few examples --------------------------------------------------------
+#-------------------------------------------------------------------------------
+tgi <- c(gi[df$loop == "Loop"][1:3], gi[df$loop == "No loop"][1:3])
+
+reg1 <- anchors(tgi[2], type = "first")
+reg2 <- anchors(tgi[2], type = "second")
+
+strand1 <- strand(anchors(tgi[2], type = "first"))
+strand2 <- strand(anchors(tgi[2], type = "second"))
+
+cov1 <- unlist(anchors(tgi[2], type = "first")$cov_Stat1)
+cov2 <- unlist(anchors(tgi[2], type = "second")$cov_Stat1)
+
 
 # Predict loops --------------------------------------------------------
+
+useTF <- ucscMeta$name
+# useTF <- c("CTCF", "Stat1")
 
 # take same number of true and false interactions for training and validation
 nLoop <- sum(df$loop == "Loop")
 
 # downsample negative set to the same size as positves
-predDF <- df %>%
-  group_by(loop) %>%
-  sample_n(nLoop) %>% 
-  ungroup() 
+# predDF <- df %>%
+#   group_by(loop) %>%
+#   sample_n(nLoop) %>%
+#   ungroup()
+
+predDF <- df %>% 
+  filter(strandOrientation == "convergent")
+
+
 
 # dived in training and test set by taking 9/10 for training and 1/10 for testing
 testCases <- sample.int(nrow(predDF), size = round(nrow(predDF)/10))
@@ -189,37 +256,72 @@ test <- predDF[testCases,]
 
 # get predictions from single TF with dist
 
-for (name in ucscMeta$name) {
-  
+# for (name in ucscMeta$name) {
+for (name in useTF) {
+    
   # design <- as.formula(paste0("loop ~ ", " dist + strandOrientation + ", "cor_", str_replace(name, "-", "_")))
-  design <- as.formula(paste0("loop ~ ", "cor_", str_replace(name, "-", "_")))
+  # design <- as.formula(paste0("loop ~ ", "cor_", str_replace(name, "-", "_")))
+  # design <- as.formula(paste0("loop ~ ", " dist + strandOrientation + cor_", name))
+  design <- as.formula(paste0("loop ~ ", " dist + cor_", name))
   
   model <- glm(
     design, 
     family = binomial(link = 'logit'), 
     data = train)
+
+  test[, str_c("pred_", name)] <- predict(model, newdata = test, type = 'response')
   
-  test <- test %>% 
-    add_predictions(model, var = str_c("pred_", name))
-  
+    # add_predictions(model, var = str_c("pred_", name))
+
+  # classical prediction
+  # fitted.results <- predict(model, newdata=test[,c("dist", str_c("cor_", name))], type = 'response')
+  # pred <- ifelse(fitted.results > 0.5,1,0)
+  # 
+  # test[, str_c("pred_", name)] <- fitted.results
 }
+
+# add modles of all TF and only dist
+
+# designAll <- as.formula(paste0("loop ~ strandOrientation + dist + ", paste(paste0("cor_", useTF), collapse = " + ")))
+designAll <- as.formula(paste0("loop ~ dist + ", paste(paste0("cor_", useTF), collapse = " + ")))
+modelAll <- glm(
+  designAll, 
+  family = binomial(link = 'logit'), 
+  data = train)
+
+# designDist <- as.formula(paste0("loop ~ dist + strandOrientation"))
+designDist <- as.formula(paste0("loop ~ dist"))
+modelDist <- glm(
+  designDist, 
+  family = binomial(link = 'logit'), 
+  data = train)
+
+test[, "pred_all"] <- predict(modelAll, newdata = test, type = 'response')
+test[, "pred_dist"] <- predict(modelDist, newdata = test, type = 'response')
+
+# test <- test %>% 
+#   mutate(
+#     pred_all <- predict(modelAll, newdata = ., type = 'response'),
+#     pred_dist <- predict(modelDist, newdata = ., type = 'response')
+#   )
+
 
 
 # Analyse performace for different output types -------------------------------------
 
 # plot ROC and PRC
 modelData <-  mmdata(
-  scores = as.list(select(test, one_of(str_c("pred_", ucscMeta$name)))),
+  scores = as.list(select(test, one_of(str_c("pred_", useTF)))),
   labels = test$loop,
-  modnames = ucscMeta$name,
+  modnames = useTF,
   posclass = "Loop"
 )
 
 # caluclate ROC and PRC
-cuves <- evalmod(modelData)
+curves <- evalmod(modelData)
 
 # get AUC of ROC and PRC
-aucDF <- auc(cuves) %>% 
+aucDF <- auc(curves) %>% 
   left_join(ucscMeta, by = c("modnames" = "name"))
 
 # barplot of AUCs of ROC and PRC
@@ -230,27 +332,29 @@ p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = TF)) +
   facet_grid(curvetypes ~ ., scales = "free_x") + 
   theme_bw() + theme(axis.text.x = element_text(angle = 60, hjust = 1)) + 
   scale_fill_manual(values = COL_TF)
-
-ggsave(p, file=paste0(outPrefix, ".AUC_ROC_PRC.by_OutputType_and_TF.barplot.pdf"), w = 7, h = 7)
+p
+ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_OutputType_and_TF.barplot.pdf"), w = 7, h = 7)
 
 
 # get ROC plots
 aucDFroc <- aucDF %>% 
   filter(curvetypes == "ROC")
 
-g <- autoplot(cuves, "ROC") + 
+g <- autoplot(curves, "ROC") + 
+  scale_color_manual(values = COL_TF) + 
   annotate("text", x = .6, y = seq(0, .25, length.out = nrow(aucDFroc)), 
-           label=paste0(aucDFroc$modnames, ": AUC=", signif(aucDFroc$aucs,3)))
-
-# ggsave(g, file=paste0(outPrefix, ".", LOOP_COL, ".", CELL, ".ChIP-seq_cov_across_all.cor.ROC.curve.pdf"), w=7, h=7)
+           label = paste0(aucDFroc$modnames, ": AUC=", signif(aucDFroc$aucs,3)))
+g
+ggsave(g, file= paste0(outPrefix, ".ROC.pdf"), w=7, h=7)
 
 # get PRC plots
 aucDFprc <- aucDF %>% 
   filter(curvetypes == "PRC")
 
-g <- autoplot(cuves, "PRC") + 
+g <- autoplot(curves, "PRC") +
+  scale_color_manual(values = COL_TF) + 
   annotate("text", x = .6, y = seq(0, .25, length.out = nrow(aucDFprc)), 
            label = paste0(aucDFprc$modnames, ": AUC=", signif(aucDFprc$aucs,3)))
 g
-
+ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w=7, h=7)
 

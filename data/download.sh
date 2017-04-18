@@ -44,14 +44,19 @@ chmod u+x ${BIN}/liftOver
 #~ output".
 # SOURCE: http://redmine.soe.ucsc.edu/forum/index.php?t=msg&goto=18147&S=216396035f6ccb52545e9b1627f21599
 
-# wget http://hgdownload.cse.ucsc.edu/goldenpath/hg19/database/factorbookMotifPos.txt.gz
 
-mkdir -P factorbook
+
+mkdir -p factorbook
+
+wget -P factorbook http://hgdownload.cse.ucsc.edu/goldenpath/hg19/database/factorbookMotifPos.txt.gz
+
+gunzip factorbook/factorbookMotifPos.txt.gz
+
 # download as factorbook/factorbookMotifPos.bed
-cat  factorbook/factorbookMotifPos.bed \
-	| awk -F"\t" '{if ($4 == "CTCF") print }' OFS="\t" \
-	> factorbook/factorbookMotifPos.bed.CTCF
-
+cat  factorbook/factorbookMotifPos.txt \
+	| awk -F"\t" '{if ($5 == "CTCF") print }' OFS="\t" \
+	| cut -f2-7 \
+	> factorbook/factorbookMotifPos.txt.CTCF.bed
 
 
 #=======================================================================
@@ -94,6 +99,13 @@ wget -P Tang2015 ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1872nnn/GSM1872889/su
 
 # unzip all files
 gunzip Tang2015/*.gz
+
+#=======================================================================
+# Capture Hi-C data from Mifsud2015
+#=======================================================================
+mkdir -p Mifsud2015
+wget -P Mifsud2015 http://www.ebi.ac.uk/arrayexpress/files/E-MTAB-2323/E-MTAB-2323.additional.1.zip
+unzip Mifsud2015/E-MTAB-2323.additional.1.zip -d Mifsud2015
 
 #=======================================================================
 # ENCODE batch download 
@@ -280,12 +292,12 @@ wget -P ENCODE -i metadata.tsv.idr.CTCF.links
 # unzip all files
 gunzip ENCODE/*.bed.gz
 
-
-#=======================================================================
-# Tang2015 ChIP-nexus data for Rad21 and SMC3:
-#=======================================================================
-mkdir -p Tang2015 
-wget -P Tang2015 ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1872nnn/GSM1872890/suppl/GSM1872890%5FGM12878%5FRAD21%5Fnexus%5FMACE%5Fforward.bw
-wget -P Tang2015 ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1872nnn/GSM1872890/suppl/GSM1872890%5FGM12878%5FRAD21%5Fnexus%5FMACE%5Freverse.bw
-wget -P Tang2015 ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1872nnn/GSM1872891/suppl/GSM1872891%5FGM12878%5FSMC3%5Fnexus%5FMACE%5Fforward.bw
-wget -P Tang2015 ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1872nnn/GSM1872891/suppl/GSM1872891%5FGM12878%5FSMC3%5Fnexus%5FMACE%5Freverse.bw
+# 
+# #=======================================================================
+# # Tang2015 ChIP-nexus data for Rad21 and SMC3:
+# #=======================================================================
+# mkdir -p Tang2015 
+# wget -P Tang2015 ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1872nnn/GSM1872890/suppl/GSM1872890%5FGM12878%5FRAD21%5Fnexus%5FMACE%5Fforward.bw
+# wget -P Tang2015 ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1872nnn/GSM1872890/suppl/GSM1872890%5FGM12878%5FRAD21%5Fnexus%5FMACE%5Freverse.bw
+# wget -P Tang2015 ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1872nnn/GSM1872891/suppl/GSM1872891%5FGM12878%5FSMC3%5Fnexus%5FMACE%5Fforward.bw
+# wget -P Tang2015 ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1872nnn/GSM1872891/suppl/GSM1872891%5FGM12878%5FSMC3%5Fnexus%5FMACE%5Freverse.bw
