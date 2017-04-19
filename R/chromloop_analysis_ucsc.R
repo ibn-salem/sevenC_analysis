@@ -172,6 +172,21 @@ if (!GI_LOCAL ) {
   load(paste0(outPrefix, ".gi.Rdata"))  
 }
 
+# Annotae with correlation across TFs -------------------------------------
+
+covCols <- paste0("cov_", ucscMeta$TF)
+covDF <- as_tibble(as.data.frame(mcols(regions(gi))[,covCols])) %>% 
+  mutate_all(.funs = purrr::map_dbl, .f = sum)
+
+mcols(regions(gi))[, "cov_sum"] <- NumericList(as_tibble(t(covDF)))
+
+gi <- chromloop::applyToCloseGI(
+  gi, 
+  datcol = "cov_sum",
+  fun = cor, 
+  colname = "cor_across_TFs"
+)
+
 #-------------------------------------------------------------------------------
 # Analyse loopps --------------------------------------------------------
 #-------------------------------------------------------------------------------
@@ -303,7 +318,8 @@ ggsave(p, file = paste0(outPrefix, ".loop_balance.pie.pdf"), w = 7, h = 7)
 
 # Predict loops --------------------------------------------------------
 
-useTF <- ucscMeta$name
+# useTF <- ucscMeta$name
+useTF <- c(ucscMeta$name, "across_TFs")
 # useTF <- c("CTCF", "Stat1")
 
 
@@ -367,8 +383,8 @@ for (name in useTF) {
 #   family = binomial(link = 'logit'),
 #   data = train)
 
-# designDist <- as.formula(paste0("loop ~ dist + strandOrientation"))
-designDist <- as.formula(paste0("loop ~ dist"))
+designDist <- as.formula(paste0("loop ~ dist + strandOrientation"))
+# designDist <- as.formula(paste0("loop ~ dist"))
 modelDist <- glm(
   designDist, 
   family = binomial(link = 'logit'), 
@@ -431,7 +447,7 @@ ggsave(g, file= paste0(outPrefix, ".ROC.pdf"), w=7, h=7)
 aucDFprc <- aucDF %>% 
   filter(curvetypes == "PRC")
 
-g <- autoplot(curves, "PRC") +
+g <- autoplot(curves, "PRC", size=4) +
   scale_color_manual(values = COL_TF) + 
   annotate("text", x = .6, y = seq(0, .25, length.out = nrow(aucDFprc)), 
            label = paste0(aucDFprc$modnames, ": AUC=", signif(aucDFprc$aucs,3)))
