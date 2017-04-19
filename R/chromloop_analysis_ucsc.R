@@ -186,8 +186,8 @@ df <- as_tibble(as.data.frame(mcols(gi))) %>%
       c(FALSE, TRUE),
       c("No loop", "Loop"))
   ) %>% 
-  select(id, loop, everything(), -Loop_Rao_GM12878, -Loop_Tang2015_GM12878)
-
+  # select(id, loop, everything(), -Loop_Rao_GM12878, -Loop_Tang2015_GM12878)
+  select(id, loop, everything())
 
 # make a tidy DF
 tidyDF <- df %>% 
@@ -221,7 +221,7 @@ ggsave(p, file = paste0(outPrefix, ".percentNotNA.by_TF_and_loop.barplot.pdf"), 
 
 tidySubDF <- tidyDF %>% 
   # filter(TF %in% c("CTCF", "Stat1")) %>% 
-  sample_n(10^7)
+  sample_n(min(nrow(tidyDF), 10^7))
 
 p <- ggplot(tidySubDF, aes(x = loop, y = cor)) +
   geom_violin(aes(fill = TF), lwd = 1.5) + 
@@ -258,6 +258,26 @@ ggsave(p, file = paste0(outPrefix, ".cor.by_TF_and_loop.boxplot.pdf"), w = 14, h
 #-------------------------------------------------------------------------------
 # analyse number of positives and negatives -------------------
 #-------------------------------------------------------------------------------
+
+vennList <- map(
+  select(df, starts_with("Loop_")),
+  function(x) which(x == "Loop")
+  )
+
+venn.diagram(
+  x = vennList, 
+  filename = paste0(outPrefix, ".loop_balance.venn.png"),
+  imagetype = "png",
+  euler.d = TRUE, scaled = TRUE
+  )
+
+vennMat <- df %>% 
+  select(starts_with("Loop_")) %>% 
+  mutate_all( function(x) x == "Loop")
+
+pdf(paste0(outPrefix, ".loop_balance.venneuler.pdf"))
+  plot(venneuler(vennMat))
+dev.off()
 
 blank_theme <- theme_minimal()+
   theme(
