@@ -12,6 +12,7 @@ require(RColorBrewer)   # for nice colors
 require(rtracklayer)  # to import() BED files
 require(colorRamps)  # to pick different colors
 require(scales)     # for scales in plotting and percent() formatin function
+require(stringr)    # for string function and regular expressions
 
 # 0) Set parameter --------------------------------------------------------
 
@@ -22,7 +23,16 @@ CTCF_motif_file <- "data/factorbook/factorbookMotifPos.txt.CTCF.bed"
 MIN_MOTIF_SCORE <- 3
 
 # COL_TF = c(colorRampPalette(brewer.pal(8, "Set1"))(9), "#80da3a")
-COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(12), "#80da3a")
+COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray70", "gray50", "gray30")
+# pie(rep(1, length(COL_TF)), col=COL_TF, labels=COL_TF, main=length(COL_TF))
+
+# COL_TF = grDevices::colors()[grep('gr(a|e)y', grDevices::colors(), invert = T)]
+# str_view(grDevices::colors(), "[^\d]$")
+# str_view(grDevices::colors(), "^((?!gr(a|e)y).)*[^\\d]$")
+# COL_TF <- grDevices::colors()[str_detect(grDevices::colors(), "^((?!(gr(a|e)y|white)).)*[^\\d]$")]
+# COL_TF <- COL_TF[!COL_TF %in% c("white", "black", "aliceblue", "azure", "beige", "bisque", "cornsilk", "cyan", "darkorchid", "coral", "darkmagenta")]
+# pie(rep(1, 20), col=COL_TF, labels=COL_TF)
+# pie(rep(1, length(COL_TF)), col=COL_TF)
 # COL_TF = colorRamps::primary.colors(12)
 
 #barplot(1:10, col=COL_TF)
@@ -144,52 +154,56 @@ if (!GI_LOCAL) {
 
 # Annotae with coverage and correlation -------------------------------------
 
-for (i in seq_len(nrow(ucscMeta))) {
-
-  stopifnot(file.exists(ucscMeta$filePath[i]))
+if (!GI_LOCAL ) {
   
-  regions(gi) <- chromloop::addCovToGR(
-    regions(gi), 
-    ucscMeta$filePath[i], 
-    window = 10, 
-    colname = paste0("cov_", ucscMeta$TF[i])
-  )
+  for (i in seq_len(nrow(ucscMeta))) {
   
-  # add correlations
+    stopifnot(file.exists(ucscMeta$filePath[i]))
+    
+    regions(gi) <- chromloop::addCovToGR(
+      regions(gi), 
+      ucscMeta$filePath[i], 
+      window = 1000, 
+      colname = paste0("cov_", ucscMeta$TF[i])
+    )
+    
+    # add correlations
+    gi <- chromloop::applyToCloseGI(
+      gi, 
+      datcol = paste0("cov_", ucscMeta$TF[i]),
+      fun = cor, 
+      colname = paste0("cor_", ucscMeta$TF[i])
+    )  
+    
+  }
+  
+  # Annotae with correlation across TFs -------------------------------------
+  
+  covCols <- paste0("cov_", ucscMeta$TF)
+  covDF <- as_tibble(as.data.frame(mcols(regions(gi))[,covCols])) %>% 
+    mutate_all(.funs = purrr::map_dbl, .f = sum)
+  
+  mcols(regions(gi))[, "cov_sum"] <- NumericList(as_tibble(t(covDF)))
+  
   gi <- chromloop::applyToCloseGI(
     gi, 
-    datcol = paste0("cov_", ucscMeta$TF[i]),
+    datcol = "cov_sum",
     fun = cor, 
-    colname = paste0("cor_", ucscMeta$TF[i])
-  )  
-  
-}
+    colname = "cor_across_TFs"
+  )
 
-# save file for faster reload
-if (!GI_LOCAL ) {
+  # save file for faster reload
   save(gi, file = paste0(outPrefix, ".gi.Rdata"))
+
 } else {
   load(paste0(outPrefix, ".gi.Rdata"))  
 }
 
-# Annotae with correlation across TFs -------------------------------------
-
-covCols <- paste0("cov_", ucscMeta$TF)
-covDF <- as_tibble(as.data.frame(mcols(regions(gi))[,covCols])) %>% 
-  mutate_all(.funs = purrr::map_dbl, .f = sum)
-
-mcols(regions(gi))[, "cov_sum"] <- NumericList(as_tibble(t(covDF)))
-
-gi <- chromloop::applyToCloseGI(
-  gi, 
-  datcol = "cov_sum",
-  fun = cor, 
-  colname = "cor_across_TFs"
-)
 
 #-------------------------------------------------------------------------------
 # Analyse loopps --------------------------------------------------------
 #-------------------------------------------------------------------------------
+
 
 df <- as_tibble(as.data.frame(mcols(gi))) %>%
   mutate(
@@ -212,7 +226,59 @@ tidyDF <- tidyDF %>%
   # mutate(type = str_replace(type, "^cor_", ""))
   mutate(TF = str_sub(TF, 5))
 
+
+#-------------------------------------------------------------------------------
+# analyse number of positives and negatives -------------------
+#-------------------------------------------------------------------------------
+
+vennList <- map(
+  select(df, starts_with("Loop_")),
+  function(x) which(x == "Loop")
+)
+
+venn.diagram(
+  x = vennList, 
+  filename = paste0(outPrefix, ".loop_balance.venn.png"),
+  imagetype = "png",
+  euler.d = TRUE, scaled = TRUE
+)
+
+vennMat <- df %>% 
+  select(starts_with("Loop_")) %>% 
+  mutate_all( function(x) x == "Loop")
+
+pdf(paste0(outPrefix, ".loop_balance.venneuler.pdf"))
+plot(venneuler(vennMat))
+dev.off()
+
+# pie chart of percent positives
+
+blank_theme <- theme_minimal()+
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.border = element_blank(),
+    panel.grid=element_blank(),
+    axis.ticks = element_blank(),
+    plot.title=element_text(size=14, face="bold")
+  )
+
+p <- ggplot(count(df, loop), aes( x ="", y = n, fill = loop)) +
+  geom_bar(stat = "identity", width = 0.5) + 
+  coord_polar("y") +
+  scale_fill_manual(values = COL_LOOP) + 
+  blank_theme +
+  theme(axis.text.x=element_blank()) +
+  geom_text(aes(y = cumsum(rev(n) / 2),
+                label = paste(rev(n), "\n", percent(rev(n) / nrow(df)))),
+            size = 5)
+
+ggsave(p, file = paste0(outPrefix, ".loop_balance.pie.pdf"), w = 7, h = 7)
+
+
+# ------------------------------------------------------------------------------
 # NAs in correlation ------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 naDF <- tidyDF %>% 
   group_by(TF, loop) %>% 
@@ -231,8 +297,15 @@ p <- ggplot(naDF, aes(x = TF, y = percentNotNA, fill = TF)) +
 # p
 ggsave(p, file = paste0(outPrefix, ".percentNotNA.by_TF_and_loop.barplot.pdf"), w = 7, h = 7)
 
-
+# percent of non-missing observations
+completeDF <- df %>% 
+  select(-starts_with("Loop_")) %>% 
+  mutate(complete = complete.cases(.)) %>% 
+  count(complete)
+  
+# ------------------------------------------------------------------------------
 # Compare Correlation with Boxplot
+# ------------------------------------------------------------------------------
 
 tidySubDF <- tidyDF %>% 
   # filter(TF %in% c("CTCF", "Stat1")) %>% 
@@ -253,68 +326,6 @@ p <- ggplot(tidySubDF, aes(x = loop, y = cor)) +
   # geom_text(data=pvalDF, aes(label=paste0("p=", signif(p,3)), x=1.5, y=1.1), size=5)
 # p
 ggsave(p, file = paste0(outPrefix, ".cor.by_TF_and_loop.boxplot.pdf"), w = 14, h = 7)
-
-#-------------------------------------------------------------------------------
-# Debug with few examples --------------------------------------------------------
-#-------------------------------------------------------------------------------
-# tgi <- c(gi[df$loop == "Loop"][1:3], gi[df$loop == "No loop"][1:3])
-# 
-# reg1 <- anchors(tgi[2], type = "first")
-# reg2 <- anchors(tgi[2], type = "second")
-# 
-# strand1 <- strand(anchors(tgi[2], type = "first"))
-# strand2 <- strand(anchors(tgi[2], type = "second"))
-# 
-# cov1 <- unlist(anchors(tgi[2], type = "first")$cov_Stat1)
-# cov2 <- unlist(anchors(tgi[2], type = "second")$cov_Stat1)
-
-
-
-#-------------------------------------------------------------------------------
-# analyse number of positives and negatives -------------------
-#-------------------------------------------------------------------------------
-
-vennList <- map(
-  select(df, starts_with("Loop_")),
-  function(x) which(x == "Loop")
-  )
-
-venn.diagram(
-  x = vennList, 
-  filename = paste0(outPrefix, ".loop_balance.venn.png"),
-  imagetype = "png",
-  euler.d = TRUE, scaled = TRUE
-  )
-
-vennMat <- df %>% 
-  select(starts_with("Loop_")) %>% 
-  mutate_all( function(x) x == "Loop")
-
-pdf(paste0(outPrefix, ".loop_balance.venneuler.pdf"))
-  plot(venneuler(vennMat))
-dev.off()
-
-blank_theme <- theme_minimal()+
-  theme(
-    axis.title.x = element_blank(),
-    axis.title.y = element_blank(),
-    panel.border = element_blank(),
-    panel.grid=element_blank(),
-    axis.ticks = element_blank(),
-    plot.title=element_text(size=14, face="bold")
-  )
-
-p <- ggplot(count(df, loop), aes( x ="", y = n, fill = loop)) +
-  geom_bar(stat = "identity", width = 0.5) + 
-  coord_polar("y", start=0) +
-  scale_fill_manual(values = COL_LOOP) + 
-  blank_theme + 
-  theme(axis.text.x=element_blank()) +
-  geom_text(aes(y = n/2 + c(0, cumsum(n)[-length(n)]), 
-                label = paste(n, "\n", percent(n / nrow(df)))), size=5)
-
-ggsave(p, file = paste0(outPrefix, ".loop_balance.pie.pdf"), w = 7, h = 7)
-
 
 # Predict loops --------------------------------------------------------
 
@@ -376,12 +387,11 @@ for (name in useTF) {
 
 # add modles of all TF and only dist
 
-# designAll <- as.formula(paste0("loop ~ strandOrientation + dist + ", paste(paste0("cor_", useTF), collapse = " + ")))
-# designAll <- as.formula(paste0("loop ~ dist + strandOrientation + ", paste(paste0("cor_", useTF), collapse = " + ")))
-# modelAll <- glm(
-#   designAll,
-#   family = binomial(link = 'logit'),
-#   data = train)
+designAll <- as.formula(paste0("loop ~ dist + strandOrientation + ", paste(paste0("cor_", useTF), collapse = " + ")))
+modelAll <- glm(
+  designAll,
+  family = binomial(link = 'logit'),
+  data = train)
 
 designDist <- as.formula(paste0("loop ~ dist + strandOrientation"))
 # designDist <- as.formula(paste0("loop ~ dist"))
@@ -390,7 +400,7 @@ modelDist <- glm(
   family = binomial(link = 'logit'), 
   data = train)
 
-# test[, "pred_all"] <- predict(modelAll, newdata = test, type = 'response')
+test[, "pred_all_TF"] <- predict(modelAll, newdata = test, type = 'response')
 test[, "pred_dist"] <- predict(modelDist, newdata = test, type = 'response')
 
 # test <- test %>% 
@@ -399,11 +409,11 @@ test[, "pred_dist"] <- predict(modelDist, newdata = test, type = 'response')
 #     pred_dist <- predict(modelDist, newdata = ., type = 'response')
 #   )
 
+#-------------------------------------------------------------------------------
+# Analyse performace for different models -------------------------------------
+#-------------------------------------------------------------------------------
 
-
-# Analyse performace for different output types -------------------------------------
-
-model_names <- c(useTF, "dist")
+model_names <- c(useTF, "dist", "all_TF")
 
 # plot ROC and PRC
 modelData <-  mmdata(
@@ -413,12 +423,35 @@ modelData <-  mmdata(
   posclass = "Loop"
 )
 
+# get rank of models
+ranked_models <- auc( evalmod(modelData) ) %>% 
+  filter(curvetypes == "PRC") %>% 
+  arrange(aucs) %>% 
+  select(modnames) %>% 
+  unlist()
+
+# build color vector with TFs as names
+non_TF_models <- c("dist", "all_TF", "across_TFs")
+TF_models <- ranked_models[!ranked_models %in% non_TF_models]
+COL_TF <- COL_TF[seq(1, length(ranked_models))]
+names(COL_TF) <- c(TF_models, non_TF_models)
+
+
+# build model again with ordered modelnames
+modelData <-  mmdata(
+  scores = as.list(select(test, one_of(str_c("pred_", ranked_models)))),
+  labels = test$loop,
+  modnames = ranked_models,
+  posclass = "Loop"
+)
+
 # caluclate ROC and PRC
 curves <- evalmod(modelData)
 
 # get AUC of ROC and PRC
-aucDF <- auc(curves) %>% 
-  left_join(ucscMeta, by = c("modnames" = "name"))
+aucDF <- auc(curves) %>%
+  left_join(ucscMeta, by = c("modnames" = "name")) %>% 
+  mutate(modnames = factor(modnames, ranked_models))
 
 # barplot of AUCs of ROC and PRC
 
@@ -436,21 +469,38 @@ ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot.pdf"), w = 7, h =
 aucDFroc <- aucDF %>% 
   filter(curvetypes == "ROC")
 
+data(P10N10)
+sscurves <- evalmod(scores = P10N10$scores, labels = P10N10$labels)
+autoplot(sscurves, "ROC") + 
+  theme(legend.position=c(.5,.25))
+
 g <- autoplot(curves, "ROC") + 
-  scale_color_manual(values = COL_TF) + 
-  annotate("text", x = .6, y = seq(0, .25, length.out = nrow(aucDFroc)), 
-           label = paste0(aucDFroc$modnames, ": AUC=", signif(aucDFroc$aucs,3)))
+  # coord_cartesian(expand = FALSE) + 
+  scale_color_manual(values = COL_TF,
+                     labels = paste0(
+                       aucDFroc$modnames, 
+                       ": AUC=", 
+                       signif(aucDFroc$aucs,3)),
+                     guide = guide_legend(override.aes = list(size = 2),
+                                          reverse = TRUE)) + 
+  theme(legend.position=c(.75,.4))
 # g
-ggsave(g, file= paste0(outPrefix, ".ROC.pdf"), w=7, h=7)
+ggsave(g, file= paste0(outPrefix, ".ROC.pdf"), w = 5, h = 5)
 
 # get PRC plots
 aucDFprc <- aucDF %>% 
   filter(curvetypes == "PRC")
 
 g <- autoplot(curves, "PRC", size=4) +
-  scale_color_manual(values = COL_TF) + 
-  annotate("text", x = .6, y = seq(0, .25, length.out = nrow(aucDFprc)), 
-           label = paste0(aucDFprc$modnames, ": AUC=", signif(aucDFprc$aucs,3)))
+  scale_color_manual(values = COL_TF,
+                     labels = paste0(
+                       aucDFroc$modnames, 
+                       ": AUC=", 
+                       signif(aucDFprc$aucs,3)),
+                     guide = guide_legend(override.aes = list(size = 2),
+                                          reverse = TRUE)) +
+  # theme(legend.position=c(.75,.6))
+  theme(legend.position="none")
 # g
-ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w=7, h=7)
+ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w=5, h=5)
 
