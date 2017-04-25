@@ -13,14 +13,33 @@ require(rtracklayer)  # to import() BED files
 require(colorRamps)  # to pick different colors
 require(scales)     # for scales in plotting and percent() formatin function
 require(stringr)    # for string function and regular expressions
+require(venneuler)  # for Venn-Euler diagram (area propotional)
+require(VennDiagram)# for VennDiagrams
+require(BiocParallel) # for parallelisation
+
+
+#-----------------------------------------------------------------------
+# Options for parallel computation
+# use all available cores but generate random number streams on each worker
+multicorParam <- MulticoreParam(RNGseed=34312)
+# set options
+register(multicorParam)
+# bpparam() # to print current options
+
 
 # 0) Set parameter --------------------------------------------------------
 
 # use previously saved gi object?
 GI_LOCAL <- FALSE
-FACTORBOOK_MOTIFS <- TRUE
+FACTORBOOK_MOTIFS <- FALSE
 CTCF_motif_file <- "data/factorbook/factorbookMotifPos.txt.CTCF.bed"
-MIN_MOTIF_SCORE <- 3
+MIN_MOTIF_SCORE <- 2
+OUTPUT_TYPES = FALSE
+
+WINDOW_SIZE <- 1000
+BIN_SIZE <- 1
+TRUE_LOOPS <- "HIC_ChIAPET"
+# TRUE_LOOPS <- "HIC_ChIAPET_CaptureC"
 
 # COL_TF = c(colorRampPalette(brewer.pal(8, "Set1"))(9), "#80da3a")
 COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray70", "gray50", "gray30")
@@ -41,11 +60,16 @@ COL_LOOP = brewer.pal(8, "Dark2")[c(8,5)] #[c(2,1,5,6)]
 # outPrefix <- file.path("results", "v01_UCSC_motifs")
 outPrefix <- file.path(
   "results", 
-  paste0("v01_UCSC", 
-         ifelse(
+  paste0("v01_",
+          ifelse(OUTPUT_TYPES, "outTypes", "UCSC"), 
+          ifelse(
            FACTORBOOK_MOTIFS, 
-           paste0("_factorbook_", MIN_MOTIF_SCORE), 
-           "")))
+           paste0("_factorbook_", MIN_MOTIF_SCORE),
+           ""),
+         "_w", WINDOW_SIZE,
+         "_b", BIN_SIZE
+         )
+)
 
 dir.create(dirname(outPrefix), showWarnings = FALSE)
 
@@ -64,20 +88,41 @@ CaptureHiC_Files <- c(
 )
 
 ucscMetaFile <- "data/ENCODE_UCSC_FILES.tsv"
-
+outTypeMetaFile <- "data/ENCODE/metadata.fltOuttype.tsv"
+# metaFile <- ifelse(OUTPUT_TYPES, outTypeMetaFile, ucscMetaFile)
 
 # Parse and filter input ChiP-seq data  -----------------------------------
 
-# parse ucscMeta file
-ucscMeta <- read_tsv(ucscMetaFile,
-                     col_types = cols(
-                       file = col_character(),
-                       TF = col_character()
-                     ))
-
-ucscMeta <- ucscMeta %>% 
-  mutate(filePath = file.path("data", "ENCODE", "UCSC", file)) %>% 
-  mutate(name = TF)
+if (OUTPUT_TYPES) {
+  # parse metatdata table for input files
+  meta <- read_tsv(outTypeMetaFile,
+                          col_types = cols(
+                            `File accession` = col_character(),
+                            TF = col_character(),
+                            `Output type` = col_character(),
+                            file_nrep = col_character(),
+                            exp_nrep = col_integer(),
+                            Lab = col_character()
+                          )
+  )
+  
+  # add name 
+  meta <- meta %>% 
+    mutate(name = str_c(TF, "_", str_replace_all(`Output type`, "[ -]", "_"))) %>% 
+    select(name, everything())
+  
+} else {
+  # parse ucscMeta file
+  meta <- read_tsv(ucscMetaFile,
+                   col_types = cols(
+                     file = col_character(),
+                     TF = col_character()
+                   ))
+  
+  meta <- meta %>% 
+    mutate(filePath = file.path("data", "ENCODE", "UCSC", file)) %>% 
+    mutate(name = TF)
+}
 
 # Select motifs and parse input data -----------------------------------
 if (!GI_LOCAL) {
@@ -126,8 +171,7 @@ if (!GI_LOCAL) {
     "c",
     lapply(LoopTang2015_GM12878_Files, 
                               chromloop::parseLoopsTang2015, 
-                              seqinfo = seqInfo)
-  )
+                              seqinfo = seqInfo))
   
   trueCaptureHiC <- do.call(
     "c",
@@ -156,30 +200,33 @@ if (!GI_LOCAL) {
 
 if (!GI_LOCAL ) {
   
-  for (i in seq_len(nrow(ucscMeta))) {
+  for (i in seq_len(nrow(meta))) {
+    
+    message("INFO: --> Working on sample: ", meta$name[i], " <--")
   
-    stopifnot(file.exists(ucscMeta$filePath[i]))
+    stopifnot(file.exists(meta$filePath[i]))
     
     regions(gi) <- chromloop::addCovToGR(
       regions(gi), 
-      ucscMeta$filePath[i], 
-      window = 1000, 
-      colname = paste0("cov_", ucscMeta$TF[i])
+      meta$filePath[i], 
+      window = WINDOW_SIZE,
+      bin_size = BIN_SIZE,
+      colname = paste0("cov_", meta$name[i])
     )
     
     # add correlations
     gi <- chromloop::applyToCloseGI(
       gi, 
-      datcol = paste0("cov_", ucscMeta$TF[i]),
+      datcol = paste0("cov_", meta$name[i]),
       fun = cor, 
-      colname = paste0("cor_", ucscMeta$TF[i])
+      colname = paste0("cor_", meta$name[i])
     )  
     
   }
   
   # Annotae with correlation across TFs -------------------------------------
   
-  covCols <- paste0("cov_", ucscMeta$TF)
+  covCols <- paste0("cov_", meta$name)
   covDF <- as_tibble(as.data.frame(mcols(regions(gi))[,covCols])) %>% 
     mutate_all(.funs = purrr::map_dbl, .f = sum)
   
@@ -208,15 +255,26 @@ if (!GI_LOCAL ) {
 df <- as_tibble(as.data.frame(mcols(gi))) %>%
   mutate(
     id = row_number(),
-    # loopLgt = Loop_Tang2015_GM12878 == "Loop" | Loop_Rao_GM12878 == "Loop"
-    loop = factor(
-      # Loop_Tang2015_GM12878 == "Loop" | Loop_Rao_GM12878 == "Loop" | Loop_Mifsud2015_GM12878 == "Loop",
+    HIC_ChIAPET_CaptureC = factor(
+        Loop_Tang2015_GM12878 == "Loop" | Loop_Rao_GM12878 == "Loop" | Loop_Mifsud2015_GM12878 == "Loop",
+      c(FALSE, TRUE),
+      c("No loop", "Loop")),
+    HIC_ChIAPET = factor(
       Loop_Tang2015_GM12878 == "Loop" | Loop_Rao_GM12878 == "Loop",
       c(FALSE, TRUE),
       c("No loop", "Loop"))
-  ) %>% 
-  # select(id, loop, everything(), -Loop_Rao_GM12878, -Loop_Tang2015_GM12878)
+  ) 
+
+if (TRUE_LOOPS == "HIC_ChIAPET_CaptureC") {
+  df <- df %>% mutate(loop =  HIC_ChIAPET_CaptureC)
+  outPrefix <- str_c(outPrefix, "_HIC_ChIAPET_CaptureC")
+} else {
+  df <- df %>% mutate(loop =  HIC_ChIAPET)
+}
+
+df <- df %>% 
   select(id, loop, everything())
+
 
 # make a tidy DF
 tidyDF <- df %>% 
@@ -243,6 +301,7 @@ venn.diagram(
   euler.d = TRUE, scaled = TRUE
 )
 
+
 vennMat <- df %>% 
   select(starts_with("Loop_")) %>% 
   mutate_all( function(x) x == "Loop")
@@ -263,15 +322,25 @@ blank_theme <- theme_minimal()+
     plot.title=element_text(size=14, face="bold")
   )
 
-p <- ggplot(count(df, loop), aes( x ="", y = n, fill = loop)) +
+nDF <- count(df, loop)
+p <- ggplot(nDF, aes( x ="", y = n, fill = loop)) +
   geom_bar(stat = "identity", width = 0.5) + 
   coord_polar("y") +
   scale_fill_manual(values = COL_LOOP) + 
-  blank_theme +
-  theme(axis.text.x=element_blank()) +
   geom_text(aes(y = cumsum(rev(n) / 2),
-                label = paste(rev(n), "\n", percent(rev(n) / nrow(df)))),
-            size = 5)
+                label = paste(rev(loop), "\n", rev(n), "\n", percent(rev(n) / nrow(df)))),
+            size = 5) + 
+  geom_text(aes(x = 0.5, y = 0, label = paste("n =", nrow(df)))) + 
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.border = element_blank(),
+    panel.grid=element_blank(),
+    axis.ticks = element_blank(),
+    plot.title=element_text(size=14, face="bold"),
+    axis.text.x=element_blank()
+  )
 
 ggsave(p, file = paste0(outPrefix, ".loop_balance.pie.pdf"), w = 7, h = 7)
 
@@ -327,15 +396,12 @@ p <- ggplot(tidySubDF, aes(x = loop, y = cor)) +
 # p
 ggsave(p, file = paste0(outPrefix, ".cor.by_TF_and_loop.boxplot.pdf"), w = 14, h = 7)
 
+# ------------------------------------------------------------------------------
 # Predict loops --------------------------------------------------------
+# ------------------------------------------------------------------------------
 
-# useTF <- ucscMeta$name
-useTF <- c(ucscMeta$name, "across_TFs")
+useTF <- c(meta$name, "across_TFs")
 # useTF <- c("CTCF", "Stat1")
-
-
-# take same number of true and false interactions for training and validation
-nLoop <- sum(df$loop == "Loop")
 
 # downsample negative set to the same size as positves
 # predDF <- df %>%
@@ -357,8 +423,10 @@ test <- predDF[testCases,]
 # get predictions from single TF with dist
 
 # for (name in ucscMeta$name) {
-for (name in useTF) {
-  
+# for (name in useTF) {
+# predList <- bplapply(useTF, function(name) {
+predList <- lapply(useTF, function(name) {
+    
   message("INFO: Fit model for TF: ", name)
     
   # design <- as.formula(paste0("loop ~ ", " dist + strandOrientation + ", "cor_", str_replace(name, "-", "_")))
@@ -374,7 +442,8 @@ for (name in useTF) {
 
   message("INFO: Predict loops with model: ", name)
   
-  test[, str_c("pred_", name)] <- predict(model, newdata = test, type = 'response')
+  # test[, str_c("pred_", name)] <- predict(model, newdata = test, type = 'response')
+  return( predict(model, newdata = test, type = 'response') )
   
     # add_predictions(model, var = str_c("pred_", name))
 
@@ -383,7 +452,12 @@ for (name in useTF) {
   # pred <- ifelse(fitted.results > 0.5,1,0)
   # 
   # test[, str_c("pred_", name)] <- fitted.results
-}
+})
+
+names(predList) <- str_c("pred_", useTF)
+predDF <- as_tibble(predList)
+
+test <- bind_cols(test, predDF)
 
 # add modles of all TF and only dist
 
@@ -408,6 +482,8 @@ test[, "pred_dist"] <- predict(modelDist, newdata = test, type = 'response')
 #     pred_all <- predict(modelAll, newdata = ., type = 'response'),
 #     pred_dist <- predict(modelDist, newdata = ., type = 'response')
 #   )
+
+save(train, test, file = paste0(outPrefix, ".train_test.Rdata"))
 
 #-------------------------------------------------------------------------------
 # Analyse performace for different models -------------------------------------
@@ -450,16 +526,16 @@ curves <- evalmod(modelData)
 
 # get AUC of ROC and PRC
 aucDF <- auc(curves) %>%
-  left_join(ucscMeta, by = c("modnames" = "name")) %>% 
+  left_join(meta, by = c("modnames" = "name")) %>%
   mutate(modnames = factor(modnames, ranked_models))
 
 # barplot of AUCs of ROC and PRC
 
 p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = modnames)) +
-  geom_bar(stat = "identity", color = "black") + 
-  geom_text(aes(label = round(aucs, 2)), vjust = 1.5) + 
-  facet_grid(curvetypes ~ ., scales = "free_x") + 
-  theme_bw() + theme(axis.text.x = element_text(angle = 60, hjust = 1)) + 
+  geom_bar(stat = "identity", color = "black") +
+  geom_text(aes(label = round(aucs, 2)), vjust = 1.5) +
+  facet_grid(curvetypes ~ ., scales = "free_x") +
+  theme_bw() + theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
   scale_fill_manual(values = COL_TF)
 # p
 ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot.pdf"), w = 7, h = 7)
@@ -468,11 +544,6 @@ ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot.pdf"), w = 7, h =
 # get ROC plots
 aucDFroc <- aucDF %>% 
   filter(curvetypes == "ROC")
-
-data(P10N10)
-sscurves <- evalmod(scores = P10N10$scores, labels = P10N10$labels)
-autoplot(sscurves, "ROC") + 
-  theme(legend.position=c(.5,.25))
 
 g <- autoplot(curves, "ROC") + 
   # coord_cartesian(expand = FALSE) + 
@@ -491,7 +562,7 @@ ggsave(g, file= paste0(outPrefix, ".ROC.pdf"), w = 5, h = 5)
 aucDFprc <- aucDF %>% 
   filter(curvetypes == "PRC")
 
-g <- autoplot(curves, "PRC", size=4) +
+g <- autoplot(curves, "PRC", size = 4) +
   scale_color_manual(values = COL_TF,
                      labels = paste0(
                        aucDFroc$modnames, 
@@ -500,7 +571,7 @@ g <- autoplot(curves, "PRC", size=4) +
                      guide = guide_legend(override.aes = list(size = 2),
                                           reverse = TRUE)) +
   # theme(legend.position=c(.75,.6))
-  theme(legend.position="none")
+  theme(legend.position = "none")
 # g
-ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w=5, h=5)
+ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
 
