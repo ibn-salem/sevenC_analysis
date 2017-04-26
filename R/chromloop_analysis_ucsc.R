@@ -16,7 +16,7 @@ require(stringr)    # for string function and regular expressions
 require(venneuler)  # for Venn-Euler diagram (area propotional)
 require(VennDiagram)# for VennDiagrams
 require(BiocParallel) # for parallelisation
-
+require(biobroom)     # to make BioC classes tidy
 
 #-----------------------------------------------------------------------
 # Options for parallel computation
@@ -34,7 +34,9 @@ GI_LOCAL <- FALSE
 FACTORBOOK_MOTIFS <- FALSE
 CTCF_motif_file <- "data/factorbook/factorbookMotifPos.txt.CTCF.bed"
 MIN_MOTIF_SCORE <- 2
+MIN_MOTIF_SIG <- 6
 OUTPUT_TYPES = FALSE
+
 
 WINDOW_SIZE <- 1000
 BIN_SIZE <- 1
@@ -56,6 +58,7 @@ COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray70", "gray50", "gr
 
 #barplot(1:10, col=COL_TF)
 COL_LOOP = brewer.pal(8, "Dark2")[c(8,5)] #[c(2,1,5,6)]
+names(COL_LOOP) <- c("No loop", "Loop")
 
 # outPrefix <- file.path("results", "v01_UCSC_motifs")
 outPrefix <- file.path(
@@ -91,7 +94,9 @@ ucscMetaFile <- "data/ENCODE_UCSC_FILES.tsv"
 outTypeMetaFile <- "data/ENCODE/metadata.fltOuttype.tsv"
 # metaFile <- ifelse(OUTPUT_TYPES, outTypeMetaFile, ucscMetaFile)
 
+#-------------------------------------------------------------------------------
 # Parse and filter input ChiP-seq data  -----------------------------------
+#-------------------------------------------------------------------------------
 
 if (OUTPUT_TYPES) {
   # parse metatdata table for input files
@@ -265,6 +270,7 @@ df <- as_tibble(as.data.frame(mcols(gi))) %>%
       c("No loop", "Loop"))
   ) 
 
+
 if (TRUE_LOOPS == "HIC_ChIAPET_CaptureC") {
   df <- df %>% mutate(loop =  HIC_ChIAPET_CaptureC)
   outPrefix <- str_c(outPrefix, "_HIC_ChIAPET_CaptureC")
@@ -274,6 +280,8 @@ if (TRUE_LOOPS == "HIC_ChIAPET_CaptureC") {
 
 df <- df %>% 
   select(id, loop, everything())
+
+# save(df, file = paste0(outPrefix, ".df.Rdata"))  
 
 
 # make a tidy DF
@@ -371,7 +379,83 @@ completeDF <- df %>%
   select(-starts_with("Loop_")) %>% 
   mutate(complete = complete.cases(.)) %>% 
   count(complete)
+
+# ------------------------------------------------------------------------------
+# Analyse motif scores in looping and non looping regions
+# ------------------------------------------------------------------------------
+# label regions if partisipate in loop
+loopAnchros <- anchors(gi[df$loop == "Loop"], id=TRUE, type="both")
+loopAnchrosIds <- unique(unlist(loopAnchros))
+
+regions(gi)$loop_anchor <- seq_along(regions(gi)) %in% loopAnchrosIds
+regions(gi)$loop_anchor <- factor(regions(gi)$loop_anchor, c(TRUE, FALSE), c("Loop", "No loop"))
+
+ancDF <- broom::tidy(regions(gi)) %>% 
+  mutate(loop_anchor = factor(loop_anchor, c(TRUE, FALSE), c("Loop", "No loop")))
+
+p <- ggplot(ancDF, aes(x = loop_anchor, y = sig, color = loop_anchor)) + 
+  geom_boxplot() + 
+  theme_bw() + scale_color_manual(values = COL_LOOP) +
+  labs(y = "Significane of Motif hit [-log10(p)]")
+ggsave(p, file = paste0(outPrefix, ".motif_signif_by_loop.boxplot.pdf"), w = 3.5, h = 7)
+
+min_anchor_value <- function(gi, colName){
   
+  score <- mcols(regions(gi))[,colName]
+  a1 <- anchors(gi, id=TRUE, type="first")
+  a2 <- anchors(gi, id=TRUE, type="second")
+  
+  min_score <- pmin(score[a1], score[a2])  
+  return(min_score)
+}
+  
+df$min_sig <- min_anchor_value(gi, "sig")
+
+p <- ggplot(df, aes(x = min_sig, color = loop)) + 
+  geom_density() + 
+  xlim(5, 8) + 
+  theme_bw() + scale_color_manual(values = COL_LOOP) +
+  labs(x = "Significane of min motif hit [-log10(p)]")
+ggsave(p, file = paste0(outPrefix, ".gi.min_motif_th_by_loop.pdf"), w = 6, h = 3)
+
+loop <- df$loop == "Loop"
+
+balanceDF <- tibble(
+  min_sig = seq_range(c(5,8), 9, pretty = TRUE),
+  n = map_int(min_sig, function(x) sum(df$min_sig >= x)),
+  nLoop = map_int(min_sig, function(x) sum(df$min_sig >= x & loop)),
+  percent = nLoop / n * 100
+)
+
+p <- ggplot(balanceDF, aes(x = min_sig, y = percent), ) + 
+  geom_line(color = COL_LOOP[2]) +
+  geom_point(color = COL_LOOP[2]) + 
+  theme_bw() + labs(
+    x = "Motif threshold [-log10(p-value)]",
+    y = "Percent positives")
+ggsave(p, file = paste0(outPrefix, ".percent_positives_by_moitf_th.pdf"), w = 6, h = 3)
+
+pn <- ggplot(balanceDF, aes(x = min_sig, y = n, label = n)) + 
+  geom_line() + 
+  geom_point() +
+  geom_text(hjust = "left", vjust = "bottom") + 
+  theme_bw() + labs(
+    x = "Motif threshold [-log10(p-value)]",
+    y = "Number of pairs")
+ggsave(pn, file = paste0(outPrefix, ".n_by_moitf_th.pdf"), w = 6, h = 3)
+
+pp <- ggplot(balanceDF, aes(x = min_sig, y = nLoop, label = nLoop)) + 
+  geom_line(color = COL_LOOP[2]) + 
+  geom_point(color = COL_LOOP[2]) +
+  geom_text(hjust = "left", vjust = "bottom", color = COL_LOOP[2]) + 
+  theme_bw() + labs(
+    x = "Motif threshold [-log10(p-value)]",
+    y = "Number of positive pairs")
+ggsave(pp, file = paste0(outPrefix, ".positives_by_moitf_th.pdf"), w = 6, h = 3)
+
+# plot_grid(p, pn, labels=c("A", "B"), ncol = 1, nrow = 2)
+# grid.arrange(p, pn, ncol = 1, nrow = 2)
+
 # ------------------------------------------------------------------------------
 # Compare Correlation with Boxplot
 # ------------------------------------------------------------------------------
@@ -399,6 +483,10 @@ ggsave(p, file = paste0(outPrefix, ".cor.by_TF_and_loop.boxplot.pdf"), w = 14, h
 # ------------------------------------------------------------------------------
 # Predict loops --------------------------------------------------------
 # ------------------------------------------------------------------------------
+if (MIN_MOTIF_SIG > 5) {
+  outPrefix <- paste0(outPrefix, "_motifSig", MIN_MOTIF_SIG)
+  df <- filter(df, min_sig >= MIN_MOTIF_SIG)
+}
 
 useTF <- c(meta$name, "across_TFs")
 # useTF <- c("CTCF", "Stat1")
@@ -409,17 +497,24 @@ useTF <- c(meta$name, "across_TFs")
 #   sample_n(nLoop) %>%
 #   ungroup()
 
-predDF <- df 
+# predDF <- df 
 # %>% 
 #   filter(strandOrientation == "convergent")
 
 
 
 # dived in training and test set by taking 9/10 for training and 1/10 for testing
-testCases <- sample.int(nrow(predDF), size = round(nrow(predDF)/10))
-train <- predDF[-testCases,]
-test <- predDF[testCases,]
+testCases <- sample.int(nrow(df), size = round(nrow(df)/10))
+train <- df[-testCases,]
+test <- df[testCases,]
 
+nLoop <- sum(train$loop == "Loop")
+# downsample negative set to the same size as positves
+trainDS <- train %>% 
+    group_by(loop) %>%
+    sample_n(nLoop) %>%
+    ungroup()
+  
 # get predictions from single TF with dist
 
 # for (name in ucscMeta$name) {
@@ -439,22 +534,32 @@ predList <- lapply(useTF, function(name) {
     design, 
     family = binomial(link = 'logit'), 
     data = train)
-
+  
   message("INFO: Predict loops with model: ", name)
   
   # test[, str_c("pred_", name)] <- predict(model, newdata = test, type = 'response')
   return( predict(model, newdata = test, type = 'response') )
-  
-    # add_predictions(model, var = str_c("pred_", name))
-
-  # classical prediction
-  # fitted.results <- predict(model, newdata=test[,c("dist", str_c("cor_", name))], type = 'response')
-  # pred <- ifelse(fitted.results > 0.5,1,0)
-  # 
-  # test[, str_c("pred_", name)] <- fitted.results
 })
-
 names(predList) <- str_c("pred_", useTF)
+
+# predDSList <- lapply(useTF, function(name) {
+#   
+#   message("INFO: Fit model for TF: ", name)
+#   design <- as.formula(paste0("loop ~ ", " dist + strandOrientation + cor_", name))
+#   
+#   modelDS <- glm(
+#     design, 
+#     family = binomial(link = 'logit'), 
+#     data = trainDS)
+#   
+#   message("INFO: Predict loops with model: ", name)
+#   
+#   # test[, str_c("pred_", name)] <- predict(model, newdata = test, type = 'response')
+#   return( predict(modelDS, newdata = test, type = 'response') )
+# })
+# names(predDSList) <- str_c("pred_", useTF, "_DS")
+
+# predDF <- as_tibble(c(predList, predDSList))
 predDF <- as_tibble(predList)
 
 test <- bind_cols(test, predDF)
@@ -489,6 +594,7 @@ save(train, test, file = paste0(outPrefix, ".train_test.Rdata"))
 # Analyse performace for different models -------------------------------------
 #-------------------------------------------------------------------------------
 
+# model_names <- c(useTF, paste0(useTF, "_DS"), "dist", "all_TF")
 model_names <- c(useTF, "dist", "all_TF")
 
 # plot ROC and PRC
@@ -521,8 +627,9 @@ modelData <-  mmdata(
   posclass = "Loop"
 )
 
-# caluclate ROC and PRC
+# caluclate ROC, PRC, and basic performance scores
 curves <- evalmod(modelData)
+# scores <- evalmod(modelData, mode = "basic")
 
 # get AUC of ROC and PRC
 aucDF <- auc(curves) %>%
@@ -535,8 +642,10 @@ p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = modnames)) +
   geom_bar(stat = "identity", color = "black") +
   geom_text(aes(label = round(aucs, 2)), vjust = 1.5) +
   facet_grid(curvetypes ~ ., scales = "free_x") +
-  theme_bw() + theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
-  scale_fill_manual(values = COL_TF)
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "none") +
+  scale_fill_manual(values = COL_TF) +
+  labs(x = "Models", y = "AUC")
 # p
 ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot.pdf"), w = 7, h = 7)
 
@@ -565,7 +674,7 @@ aucDFprc <- aucDF %>%
 g <- autoplot(curves, "PRC", size = 4) +
   scale_color_manual(values = COL_TF,
                      labels = paste0(
-                       aucDFroc$modnames, 
+                       aucDFprc$modnames, 
                        ": AUC=", 
                        signif(aucDFprc$aucs,3)),
                      guide = guide_legend(override.aes = list(size = 2),
