@@ -17,6 +17,7 @@ require(venneuler)  # for Venn-Euler diagram (area propotional)
 require(VennDiagram)# for VennDiagrams
 require(BiocParallel) # for parallelisation
 require(biobroom)     # to make BioC classes tidy
+require(grid)         # for textGrob
 
 #-----------------------------------------------------------------------
 # Options for parallel computation
@@ -68,7 +69,8 @@ outPrefix <- file.path(
           ifelse(
            FACTORBOOK_MOTIFS, 
            paste0("_factorbook_", MIN_MOTIF_SCORE),
-           ""),
+           ifelse(MIN_MOTIF_SIG > 5, paste0("_motifSig", MIN_MOTIF_SIG), "")
+          ),
          "_w", WINDOW_SIZE,
          "_b", BIN_SIZE
          )
@@ -136,9 +138,24 @@ if (!GI_LOCAL) {
   if (!FACTORBOOK_MOTIFS) {
   
     ancGR <- chromloop::motif.hg19.CTCF
+
+    # plot motif score distribution
+    sigDF <- tibble(sig = ancGR$sig)
+    p <- sigDF %>% 
+      ggplot(aes(x = sig)) + 
+      geom_histogram() + 
+      geom_vline(xintercept = MIN_MOTIF_SIG) +
+      labs(x="Motif hit significance [-log10(p-value)]") + 
+      annotation_custom(textGrob("there"), 
+                        xmin = MIN_MOTIF_SIG, xmax = Inf, ymin = -Inf, ymax = Inf)
+    ggsave(p, file = paste0(outPrefix, ".ancGR.motif_sig.histogram.pdf"), w = 7, h = 7)
     
-    # # filter for p-valu <= 10^-6
-    # ancGR <- ancGR[ancGR$sig >= 6]
+    sigDF %>% 
+      count(sig >= MIN_MOTIF_SIG) %>% 
+      write_tsv(path = paste0(outPrefix, ".ancGR.motif_sig.n.tsv"))
+        
+    # filter for p-valu <= MIN_MOTIF_SIG
+    ancGR <- ancGR[ancGR$sig >= MIN_MOTIF_SIG]
   
     seqInfo <- seqinfo(chromloop::motif.hg19.CTCF)
   
@@ -297,6 +314,20 @@ tidyDF <- tidyDF %>%
 # analyse number of positives and negatives -------------------
 #-------------------------------------------------------------------------------
 
+# simple stats:
+countsDF <- tibble(
+  nMotif = length(regions(gi)),
+  nPairs = nrow(df),
+  HiC = sum(df$Loop_Rao_GM12878 == "Loop"),
+  HiC_percent = HiC / nPairs * 100, 
+  HIC_ChIAPET = sum(df$HIC_ChIAPET == "Loop"),
+  HIC_ChIAPET_percent = HIC_ChIAPET / nPairs * 100,
+  HIC_ChIAPET_CaptureC = sum(df$HIC_ChIAPET_CaptureC == "Loop"),
+  HIC_ChIAPET_CaptureC_percent = HIC_ChIAPET_CaptureC / nPairs * 100
+)
+
+write_tsv(countsDF, path = paste0(outPrefix, ".countsDF.tsv"))
+
 vennList <- map(
   select(df, starts_with("Loop_")),
   function(x) which(x == "Loop")
@@ -384,14 +415,15 @@ completeDF <- df %>%
 # Analyse motif scores in looping and non looping regions
 # ------------------------------------------------------------------------------
 # label regions if partisipate in loop
-loopAnchros <- anchors(gi[df$loop == "Loop"], id=TRUE, type="both")
+loopAnchros <- anchors(gi[df$loop == "Loop"], id = TRUE, type = "both")
 loopAnchrosIds <- unique(unlist(loopAnchros))
 
 regions(gi)$loop_anchor <- seq_along(regions(gi)) %in% loopAnchrosIds
 regions(gi)$loop_anchor <- factor(regions(gi)$loop_anchor, c(TRUE, FALSE), c("Loop", "No loop"))
 
-ancDF <- broom::tidy(regions(gi)) %>% 
-  mutate(loop_anchor = factor(loop_anchor, c(TRUE, FALSE), c("Loop", "No loop")))
+ancDF <- broom::tidy(regions(gi)) 
+# %>% 
+#   mutate(loop_anchor = factor(loop_anchor, c(TRUE, FALSE), c("Loop", "No loop")))
 
 p <- ggplot(ancDF, aes(x = loop_anchor, y = sig, color = loop_anchor)) + 
   geom_boxplot() + 
@@ -456,6 +488,35 @@ ggsave(pp, file = paste0(outPrefix, ".positives_by_moitf_th.pdf"), w = 6, h = 3)
 # plot_grid(p, pn, labels=c("A", "B"), ncol = 1, nrow = 2)
 # grid.arrange(p, pn, ncol = 1, nrow = 2)
 
+# strand orientation 
+
+p <- df %>%
+  group_by(loop, strandOrientation) %>%
+  summarise(
+    n = n()
+  ) %>% 
+  ggplot(aes(x = strandOrientation, y = n, fill = strandOrientation)) + 
+  geom_bar(stat = "identity", color = "black") +
+  geom_text(aes(label = n), vjust = 2) +
+  facet_grid(loop ~ . , scales = "free_y") + 
+  theme_bw() + 
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none") + 
+  labs(x = "Motif orientation", y = "Number of pairs")
+
+ggsave(p, file = paste0(outPrefix, "n_by_strand_and_loop.barplot.pdf"),
+       w = 5, h = 5)
+
+# distance 
+p <- ggplot(df, aes(x = dist / 1000, fill = loop, color = loop)) +
+  geom_density(size = 2, alpha = 0.5) +
+  scale_color_manual(values = COL_LOOP, guide_legend(title = "")) +
+  scale_fill_manual(values = COL_LOOP, guide_legend(title = "")) +
+  theme_bw() + theme(text = element_text(size = 20), legend.position = "bottom") + 
+  labs(y = "Density", x = "Loop Distance [kb]") 
+ggsave(p, file = paste0(outPrefix, ".distance_by_loop.density.pdf"), w = 6, h = 3)
+
 # ------------------------------------------------------------------------------
 # Compare Correlation with Boxplot
 # ------------------------------------------------------------------------------
@@ -483,24 +544,9 @@ ggsave(p, file = paste0(outPrefix, ".cor.by_TF_and_loop.boxplot.pdf"), w = 14, h
 # ------------------------------------------------------------------------------
 # Predict loops --------------------------------------------------------
 # ------------------------------------------------------------------------------
-if (MIN_MOTIF_SIG > 5) {
-  outPrefix <- paste0(outPrefix, "_motifSig", MIN_MOTIF_SIG)
-  df <- filter(df, min_sig >= MIN_MOTIF_SIG)
-}
 
 useTF <- c(meta$name, "across_TFs")
 # useTF <- c("CTCF", "Stat1")
-
-# downsample negative set to the same size as positves
-# predDF <- df %>%
-#   group_by(loop) %>%
-#   sample_n(nLoop) %>%
-#   ungroup()
-
-# predDF <- df 
-# %>% 
-#   filter(strandOrientation == "convergent")
-
 
 
 # dived in training and test set by taking 9/10 for training and 1/10 for testing
@@ -508,19 +554,19 @@ testCases <- sample.int(nrow(df), size = round(nrow(df)/10))
 train <- df[-testCases,]
 test <- df[testCases,]
 
-nLoop <- sum(train$loop == "Loop")
-# downsample negative set to the same size as positves
-trainDS <- train %>% 
-    group_by(loop) %>%
-    sample_n(nLoop) %>%
-    ungroup()
+# nLoop <- sum(train$loop == "Loop")
+# # downsample negative set to the same size as positves
+# trainDS <- train %>% 
+#     group_by(loop) %>%
+#     sample_n(nLoop) %>%
+#     ungroup()
   
 # get predictions from single TF with dist
 
 # for (name in ucscMeta$name) {
 # for (name in useTF) {
 # predList <- bplapply(useTF, function(name) {
-predList <- lapply(useTF, function(name) {
+predList <- bplapply(useTF, function(name) {
     
   message("INFO: Fit model for TF: ", name)
     
@@ -589,6 +635,54 @@ test[, "pred_dist"] <- predict(modelDist, newdata = test, type = 'response')
 #   )
 
 save(train, test, file = paste0(outPrefix, ".train_test.Rdata"))
+
+#-------------------------------------------------------------------------------
+# Model parameters
+#-------------------------------------------------------------------------------
+modelList <- bplapply(useTF, function(name) {
+  design <- as.formula(paste0("loop ~ ", " dist + strandOrientation + cor_", name))
+  
+  model <- glm(
+    design, 
+    family = binomial(link = 'logit'), 
+    data = train)
+  return(model)
+})
+
+tidyModel <- lapply(modelList, broom::tidy)
+names(tidyModel) <- useTF
+modelDF <- as_tibble(bind_rows(tidyModel, .id = "name"))
+
+modelDF <- modelDF %>% 
+  mutate(param = str_replace(term, "cor_.*", "cor")) %>% 
+  mutate(param = str_replace(param, "strandOrientation", "")) %>% 
+  mutate(param = parse_factor(param, levels = NULL))
+
+p <- ggplot(modelDF, aes(x = name, y = estimate, fill = name)) + 
+  geom_bar(stat = "identity", position = "dodge") + 
+  # geom_text(aes(label = round(estimate, 2)), vjust = "inward") + 
+  # facet_grid(param ~ ., scales = "free_y") + 
+  geom_text(aes(label = round(estimate, 2)), hjust = "inward") + 
+  facet_grid(. ~ param , scales = "free_x") + 
+  coord_flip() +
+  labs(y = "Parameter estimate", x = "Model") + 
+  theme_bw() + scale_fill_manual(values = COL_TF) + 
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
+ggsave(p, file = paste0(outPrefix, ".paramter.barplot.pdf"), w = 6, h = 3)
+# 
+# p <- ggplot(modelDF, aes(x = name, y = exp(estimate), fill = name)) + 
+#   geom_bar(stat = "identity", position = "dodge") + 
+#   # geom_text(aes(label = round(estimate, 2)), vjust = "inward") + 
+#   # facet_grid(param ~ ., scales = "free_y") + 
+#   geom_text(aes(label = round(exp(estimate), 2)), hjust = "inward") + 
+#   facet_grid(. ~ param , scales = "free_x") + 
+#   coord_flip() +
+#   labs(y = "Parameter estimate", x = "Model") + 
+#   theme_bw() + scale_fill_manual(values = COL_TF) + 
+#   theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
+# ggsave(p, file = paste0(outPrefix, ".exp_paramter.barplot.pdf"), w = 6, h = 3)
+
+
 
 #-------------------------------------------------------------------------------
 # Analyse performace for different models -------------------------------------
