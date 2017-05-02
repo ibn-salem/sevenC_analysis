@@ -4,6 +4,7 @@
 
 require(tidyverse)
 require(stringr)
+require(lubridate)
 
 outPrefix <- file.path("results", "data.ENCODE")
 dir.create(dirname(outPrefix), showWarnings = FALSE)
@@ -43,37 +44,40 @@ report <- report %>%
 # parse metadata.tsv for each file ----------------------------------------
 
 # parse metadata for each file
-meta <- read_tsv(
+meta_raw <- read_tsv(
   metaDataFile,
   col_types = cols(
     `Biological replicate(s)` = col_character(),
     `Technical replicate` = col_character()
   ))
 
-# filter for hg19
-meta <- meta %>%
-  filter(Assembly == "hg19")
-
-# add TF name from report table
-meta <- meta %>%
+# add TF name from report table, 
+# add number of replicates
+# normalize size in Mb
+# and seleect importat colums to beginning
+meta <- meta_raw %>%
   left_join(
     report,
     select(report, Accession, `Target label`),
     by = c("Experiment accession" = "Accession")
   ) %>%
   mutate(TF = `Target label`, Lab = Lab.x) %>%
+  # mutate(rep = map(str_split(`Biological replicate(s)`, ","), parse_integer)) %>%
   mutate(rep = map(str_split(`Biological replicate(s)`, ","), parse_integer)) %>%
   mutate(file_nrep = map_int(rep, length)) %>%
   mutate(file_nrep = ifelse(is.na(rep), "Unknown", file_nrep)) %>%
-  mutate(size = Size / 1024^2)
-
-
-# reorder columns to have important column at beginning
-df <- meta %>%
+  mutate(size = Size / 1024^2) %>% 
+  mutate(date = ymd(`Experiment date released`)) %>% 
   select(`File accession`, TF, `Output type`, 
-         rep, file_nrep, exp_nrep, Lab, size, everything()) %>%
+         rep, file_nrep, exp_nrep, Lab, size, date, everything()) 
+
+
+# filter for GM12878
+# filter for hg19
+df <- meta %>%
+  filter(Assembly == "hg19") %>% 
   filter(`Biosample term name` == "GM12878")
-  
+
 
 
 # utils:::format.object_size(x, format="auto")
@@ -93,7 +97,6 @@ p <- plotDF %>%
   geom_bar(stat = "identity", position = "dodge") +
   theme_bw() + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
 ggsave(str_c(outPrefix, ".n_by_outputType_and_nrep.barplot.pdf"))
 
 
@@ -196,6 +199,49 @@ fltOuttype %>%
 fltOuttype %>%
   select(`File accession`:Lab, -rep, filePath) %>%
   write_tsv(path = file.path("data", "ENCODE", "metadata.fltOuttype.tsv"))
+
+# Filter for fold change and all TFs -------------------------------------------------
+fcDF <- df %>% 
+  filter(`Output type` %in% c("signal", "fold change over control")) %>%
+  # filter(`Output type` %in% c("fold change over control")) %>%
+  filter(`Biological replicate(s)` == "1, 2" | file_nrep == "Unknown") %>%
+  # filter(map_lgl(rep, setequal, 1:2) | is.na(rep)) %>% 
+  # filter(file_nrep == 2 | `Output type` == "raw signal") %>% 
+  # filter(rep == "1" | is.na(rep)) %>%
+  # filter(`Biosample term name` == "GM12878") %>%
+  # filter(TF %in% c("CTCF", "REST", "STAT1")) %>%
+  mutate(usedTF = TF %in% useTFs) %>%
+  arrange(desc(TF), desc(`Output type`), desc(date)) %>%
+  distinct(`Output type`, TF, .keep_all = TRUE) %>%
+  mutate(filePath = file.path("data", "ENCODE", "Experiments", basename(`File download URL`))) %>% 
+  select(1:9, usedTF, filePath, everything())
+
+fcDF %>% 
+  select(`File download URL`) %>%
+  write_tsv(
+    path = file.path("data", "ENCODE", "URLs.fcDF.txt"),
+    col_names = FALSE)
+
+fcDF %>%
+  select(`File accession`:Lab, -rep, filePath) %>%
+  write_tsv(path = file.path("data", "ENCODE", "metadata.fcDF.tsv"))
+
+
+
+# sDF <- df %>% 
+#   filter(`Output type` %in% c("signal")) %>%
+#   # filter(`Biological replicate(s)` == "1, 2") %>%
+#   # filter(map_lgl(rep, setequal, 1:2) | is.na(rep)) %>% 
+#   # filter(file_nrep == 2 | `Output type` == "raw signal") %>% 
+#   # filter(rep == "1" | is.na(rep)) %>%
+#   # filter(`Biosample term name` == "GM12878") %>%
+#   # filter(TF %in% c("CTCF", "REST", "STAT1")) %>%
+#   mutate(usedTF = TF %in% useTFs) %>%
+#   arrange(desc(TF), desc(`Output type`), desc(date)) %>%
+#   distinct(`Output type`, TF, .keep_all = TRUE) %>%
+#   mutate(filePath = file.path("data", "ENCODE", "Experiments", basename(`File download URL`))) %>% 
+#   select(1:9, usedTF, filePath, everything())
+
 
 
 #-------------------------------------------------------------------------------

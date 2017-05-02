@@ -125,7 +125,7 @@ wget -O ENCODE/report.tsv "https://www.encodeproject.org/report.tsv?type=Experim
 
 # download only metadata.tsv file (with first link in files.txt)
 head -n 1 ENCODE/files.txt \
-| wget -P ENCODE -i -
+| wget -O ENCODE/metadata.tsv -i -
 
 # filter by metadata using R scirpt
 # cd ..
@@ -136,6 +136,7 @@ mkdir -p ENCODE/Experiments
 cd ENCODE/Experiments 
 xargs -n 1 curl -O -L < ../URLs.flt.txt
 xargs -n 1 curl -O -L < ../URLs.fltOuttype.txt
+xargs -n 1 curl -O -L < ../URLs.fcDF.txt
 
 cd ../..
 
