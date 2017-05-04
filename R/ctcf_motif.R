@@ -3,6 +3,7 @@
 ################################################################################
 
 require(chromloop)    # for interaction parsers
+require(InteractionSet) # for GI objects
 require(tidyverse)    # for tidy data
 require(stringr)      # for string functions
 require(rtracklayer)  # to import() BED files
@@ -65,9 +66,9 @@ allGI <- list(
 ancGRL <- GRangesList(lapply(allGI, function(gi){
   sort(
     trim(
-      GenomicRanges::reduce(
+      # GenomicRanges::reduce(
         InteractionSet::regions(gi)
-      )
+      # )
     )
   )
 }))
@@ -80,7 +81,7 @@ ancSeq <- getSeq(genome, ancGR)
 
 writeXStringSet(
     ancSeq, 
-    filepath = file.path(outPrefix, "all_anchors.fasta"), 
+    filepath = file.path(outPrefix, "all_anchors.raw.fasta"), 
     format = "fasta")
 
 for (name in names(ancGRL)) {
@@ -94,7 +95,7 @@ for (name in names(ancGRL)) {
   
   writeXStringSet(
     seq, 
-    filepath = file.path(outPrefix, paste0(name, "_anchors.fasta")), 
+    filepath = file.path(outPrefix, paste0(name, "_anchors.raw.fasta")), 
     format = "fasta")
 }
 
