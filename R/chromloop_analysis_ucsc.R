@@ -189,11 +189,10 @@ if (!GI_LOCAL) {
   # parse loops
   trueLoopsRao <- chromloop::parseLoopsRao(
     LoopRao2014_GM12878_File, seqinfo = seqInfo)
-  trueLoopsTang2015 <- do.call(
-    "c",
-    lapply(LoopTang2015_GM12878_Files, 
-                              chromloop::parseLoopsTang2015, 
-                              seqinfo = seqInfo))
+  
+  trueLoopsTang2015_CTCF <- chromloop::parseLoopsTang2015(LoopTang2015_GM12878_Files[[1]], seqinfo = seqInfo)
+  trueLoopsTang2015_PolII <- chromloop::parseLoopsTang2015(LoopTang2015_GM12878_Files[[2]], seqinfo = seqInfo)
+  trueLoopsTang2015 <- c(trueLoopsTang2015_CTCF, trueLoopsTang2015_PolII)
   
   trueCaptureHiC <- do.call(
     "c",
@@ -208,6 +207,8 @@ if (!GI_LOCAL) {
   # gi$Loop_Rao_GM12878 <- factor(ol, c(FALSE, TRUE), c("No loop", "Loop"))
   
   gi <- addInteractionSupport(gi, trueLoopsRao, "Loop_Rao_GM12878")
+  gi <- addInteractionSupport(gi, trueLoopsTang2015_CTCF, "Loop_Tang2015_GM12878_CTCF")
+  gi <- addInteractionSupport(gi, trueLoopsTang2015_PolII, "Loop_Tang2015_GM12878_PolII")
   gi <- addInteractionSupport(gi, trueLoopsTang2015, "Loop_Tang2015_GM12878")
   gi <- addInteractionSupport(gi, trueCaptureHiC, "Loop_Mifsud2015_GM12878")
   
@@ -348,6 +349,46 @@ vennMat <- df %>%
 pdf(paste0(outPrefix, ".loop_balance.venneuler.pdf"))
 plot(venneuler(vennMat))
 dev.off()
+
+
+# Venn-Diagram of ChIA-PET and Hi-C loops --------------------------------------
+
+vennList <- map(
+  select(df, Loop_Rao_GM12878, Loop_Tang2015_GM12878_CTCF, Loop_Tang2015_GM12878_PolII),
+  function(x) which(x == "Loop")
+)
+names(vennList) <- c("Hi-C", "CTCF ChIA-PET", "PolII ChIA-PET")
+
+venn.diagram(
+  x = vennList, 
+  filename = paste0(outPrefix, ".loop_balance.Hi-C_ChIA-PET.venn.png"),
+  imagetype = "png",
+  euler.d = TRUE, scaled = TRUE,
+  lwd = 6,
+  lty = 'blank',
+  fill = c("cornflowerblue", "green", "yellow"),
+  cex = 2,
+  fontface = "bold",
+  fontfamily = "sans",
+  cat.cex = 2.5,
+  cat.fontface = "bold",
+  cat.default.pos = "outer",
+  cat.pos = c(-27, 27, 135),
+  cat.dist = c(0.055, 0.055, 0.085),
+  cat.fontfamily = "sans",
+  rotation = 1,
+  cat.just = list(c(0.6,1) , c(.7,1.2) , c(1,0))
+)
+
+vennMat <- df %>% 
+  select(Loop_Rao_GM12878, Loop_Tang2015_GM12878_CTCF, Loop_Tang2015_GM12878_PolII) %>% 
+  mutate_all( function(x) x == "Loop")
+names(vennMat) <- c("Hi-C", "CTCF ChIA-PET", "PolII ChIA-PET")
+  
+pdf(paste0(outPrefix, ".loop_balance.Hi-C_ChIA-PET.venneuler.pdf"))
+plot(venneuler(vennMat))
+dev.off()
+
 
 # pie chart of percent positives
 
