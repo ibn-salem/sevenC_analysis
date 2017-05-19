@@ -14,8 +14,6 @@ require(rtracklayer)  # to import() BED files
 require(colorRamps)  # to pick different colors
 require(scales)     # for scales in plotting and percent() formatin function
 require(stringr)    # for string function and regular expressions
-require(venneuler)  # for Venn-Euler diagram (area propotional)
-require(VennDiagram)# for VennDiagrams
 require(BiocParallel) # for parallelisation
 require(biobroom)     # to make BioC classes tidy
 require(grid)         # for textGrob
@@ -396,7 +394,7 @@ byTF <- byTF %>%
   mutate(tidy_model = map(model, broom::tidy)) %>% 
   mutate(glance = map(model, broom::glance)) %>% 
 
-# save(byTF, file = paste0(outPrefix, ".byTF.Rdata"))
+save(byTF, file = paste0(outPrefix, ".byTF.Rdata"))
 
 # Analyse Model parameters ----------------------------------------------------
 
@@ -531,6 +529,17 @@ p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = modnames)) +
   geom_bar(stat = "identity", color = "black") +
   geom_text(aes(label = round(aucs, 2)), size = 3, hjust = 1, angle = 90) +
   facet_grid(curvetypes ~ ., scales = "free") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "none") +
+  scale_fill_manual(values = COL_TF) +
+  labs(x = "Models", y = "AUC")
+# p
+ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot.pdf"), w = 14, h = 7)
+
+p <- ggplot(aucDF, aes(x = TF, y = aucs, fill = modnames)) +
+  geom_bar(stat = "identity", color = "black") +
+  geom_text(aes(label = round(aucs, 2)), size = 3, hjust = 1, angle = 90) +
+  facet_grid(curvetypes ~ outType, scales = "free") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "none") +
   scale_fill_manual(values = COL_TF) +
