@@ -45,7 +45,9 @@ TRUE_LOOPS <- "HIC_ChIAPET"
 # TRUE_LOOPS <- "HIC_ChIAPET_CaptureC"
 
 # COL_TF = c(colorRampPalette(brewer.pal(8, "Set1"))(9), "#80da3a")
-COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray70", "gray50", "gray30")
+# COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray70", "gray50", "gray30")
+COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray70", "gray50", "green", "darkgreen", "gray30")
+
 # pie(rep(1, length(COL_TF)), col=COL_TF, labels=COL_TF, main=length(COL_TF))
 
 # COL_TF = grDevices::colors()[grep('gr(a|e)y', grDevices::colors(), invert = T)]
@@ -658,22 +660,36 @@ modelAll <- glm(
   designAll,
   family = binomial(link = 'logit'),
   data = train)
+test[, "pred_all_TF"] <- predict(modelAll, newdata = test, type = 'response')
 
-designDist <- as.formula(paste0("loop ~ dist + strandOrientation"))
-# designDist <- as.formula(paste0("loop ~ dist"))
-modelDist <- glm(
-  designDist, 
+modelDistOrientation <- glm(
+  loop ~ dist + strandOrientation, 
   family = binomial(link = 'logit'), 
   data = train)
 
-test[, "pred_all_TF"] <- predict(modelAll, newdata = test, type = 'response')
-test[, "pred_dist"] <- predict(modelDist, newdata = test, type = 'response')
+test[, "pred_Dist+Orientation"] <- predict(modelDistOrientation, newdata = test, type = 'response')
 
 # test <- test %>% 
 #   mutate(
 #     pred_all <- predict(modelAll, newdata = ., type = 'response'),
 #     pred_dist <- predict(modelDist, newdata = ., type = 'response')
 #   )
+#-----------------------------
+
+modelDistOnly <- glm(
+  loop ~ dist, 
+  family = binomial(link = 'logit'), 
+  data = train)
+
+test[, "pred_Dist"] <- predict(modelDistOnly, newdata = test, type = 'response')
+
+modelOrientation <- glm(
+  loop ~ strandOrientation, 
+  family = binomial(link = 'logit'), 
+  data = train)
+
+test[, "pred_Orientation"] <- predict(modelOrientation, newdata = test, type = 'response')
+
 
 save(train, test, file = paste0(outPrefix, ".train_test.Rdata"))
 
@@ -730,7 +746,7 @@ ggsave(p, file = paste0(outPrefix, ".paramter.barplot.pdf"), w = 6, h = 3)
 #-------------------------------------------------------------------------------
 
 # model_names <- c(useTF, paste0(useTF, "_DS"), "dist", "all_TF")
-model_names <- c(useTF, "dist", "all_TF")
+model_names <- c(useTF, "all_TF", "Dist+Orientation", "Dist", "Orientation")
 
 # plot ROC and PRC
 modelData <-  mmdata(
@@ -747,8 +763,10 @@ ranked_models <- auc( evalmod(modelData) ) %>%
   select(modnames) %>% 
   unlist()
 
+COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray30", "lightblue", "orange", "lightgreen", "gray70")
+
 # build color vector with TFs as names
-non_TF_models <- c("dist", "all_TF", "across_TFs")
+non_TF_models <- c("all_TF", "Dist+Orientation", "Dist", "Orientation", "across_TFs")
 TF_models <- ranked_models[!ranked_models %in% non_TF_models]
 COL_TF <- COL_TF[seq(1, length(ranked_models))]
 names(COL_TF) <- c(TF_models, non_TF_models)
@@ -782,7 +800,7 @@ p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = modnames)) +
   scale_fill_manual(values = COL_TF) +
   labs(x = "Models", y = "AUC")
 # p
-ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot.pdf"), w = 7, h = 7)
+ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot_new.pdf"), w = 7, h = 7)
 
 
 # get ROC plots
@@ -796,11 +814,11 @@ g <- autoplot(curves, "ROC") +
                        aucDFroc$modnames, 
                        ": AUC=", 
                        signif(aucDFroc$aucs,3)),
-                     guide = guide_legend(override.aes = list(size = 2),
+                     guide = guide_legend(override.aes = list(size = 1.5),
                                           reverse = TRUE)) + 
-  theme(legend.position=c(.75,.4))
+  theme(legend.position=c(.75,.45)) # , legend.text = element_text(size = 7)
 # g
-ggsave(g, file= paste0(outPrefix, ".ROC.pdf"), w = 5, h = 5)
+ggsave(g, file= paste0(outPrefix, ".ROC_new.pdf"), w = 5, h = 5)
 
 # get PRC plots
 aucDFprc <- aucDF %>% 
@@ -817,5 +835,5 @@ g <- autoplot(curves, "PRC", size = 4) +
   # theme(legend.position=c(.75,.6))
   theme(legend.position = "none")
 # g
-ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
+ggsave(g, file = paste0(outPrefix, ".PRC_new.pdf"), w = 5, h = 5)
 
