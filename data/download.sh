@@ -297,8 +297,20 @@ gunzip ENCODE/*.bed.gz
 # #=======================================================================
 # # Tang2015 ChIP-nexus data for Rad21 and SMC3:
 # #=======================================================================
-# mkdir -p Tang2015 
+mkdir -p Tang2015 
 # wget -P Tang2015 ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1872nnn/GSM1872890/suppl/GSM1872890%5FGM12878%5FRAD21%5Fnexus%5FMACE%5Fforward.bw
 # wget -P Tang2015 ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1872nnn/GSM1872890/suppl/GSM1872890%5FGM12878%5FRAD21%5Fnexus%5FMACE%5Freverse.bw
 # wget -P Tang2015 ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1872nnn/GSM1872891/suppl/GSM1872891%5FGM12878%5FSMC3%5Fnexus%5FMACE%5Fforward.bw
 # wget -P Tang2015 ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1872nnn/GSM1872891/suppl/GSM1872891%5FGM12878%5FSMC3%5Fnexus%5FMACE%5Freverse.bw
+
+#=======================================================================
+# ChIP-nexus data from Tang2015 
+#=======================================================================
+# download SRA tool
+wget https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/2.8.2-1/sratoolkit.2.8.2-1-ubuntu64.tar.gz
+
+# extract rsa tool
+gunzip sratoolkit.2.8.2-1-ubuntu64.tar.gz
+
+# get SRA of RAD21 ChIP-nexus
+./sratoolkit.2.8.2-1-ubuntu64/bin/fastq-dump -O Tang2015 --gzip SRR2312570
