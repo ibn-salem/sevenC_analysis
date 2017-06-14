@@ -66,7 +66,7 @@ names(COL_LOOP) <- c("No loop", "Loop")
 # outPrefix <- file.path("results", "v01_UCSC_motifs")
 outPrefix <- file.path(
   "results", 
-  paste0("v01_",
+  paste0("v02_",
           ifelse(OUTPUT_TYPES, "outTypes", "UCSC"), 
           ifelse(
            FACTORBOOK_MOTIFS, 
@@ -186,6 +186,9 @@ if (!GI_LOCAL) {
   
   # add strand combinations
   gi <- chromloop::addStrandCombination(gi)
+
+  # add motif score
+  gi <- chromloop::addMotifScore(gi, colname = "sig")
   
   
   # parse loops
@@ -276,7 +279,6 @@ if (!GI_LOCAL ) {
 # Analyse loopps --------------------------------------------------------
 #-------------------------------------------------------------------------------
 
-
 df <- as_tibble(as.data.frame(mcols(gi))) %>%
   mutate(
     id = row_number(),
@@ -302,6 +304,7 @@ df <- df %>%
   select(id, loop, everything())
 
 # save(df, file = paste0(outPrefix, ".df.Rdata"))  
+# load(paste0(outPrefix, ".df.Rdata"))  
 
 
 # make a tidy DF
@@ -617,7 +620,7 @@ predList <- bplapply(useTF, function(name) {
   # design <- as.formula(paste0("loop ~ ", "cor_", str_replace(name, "-", "_")))
   # design <- as.formula(paste0("loop ~ ", " dist + cor_", name))
   
-  design <- as.formula(paste0("loop ~ ", " dist + strandOrientation + cor_", name))
+  design <- as.formula(paste0("loop ~ ", " dist + strandOrientation + score_min + cor_", name))
   
   model <- glm(
     design, 
@@ -630,23 +633,6 @@ predList <- bplapply(useTF, function(name) {
   return( predict(model, newdata = test, type = 'response') )
 })
 names(predList) <- str_c("pred_", useTF)
-
-# predDSList <- lapply(useTF, function(name) {
-#   
-#   message("INFO: Fit model for TF: ", name)
-#   design <- as.formula(paste0("loop ~ ", " dist + strandOrientation + cor_", name))
-#   
-#   modelDS <- glm(
-#     design, 
-#     family = binomial(link = 'logit'), 
-#     data = trainDS)
-#   
-#   message("INFO: Predict loops with model: ", name)
-#   
-#   # test[, str_c("pred_", name)] <- predict(model, newdata = test, type = 'response')
-#   return( predict(modelDS, newdata = test, type = 'response') )
-# })
-# names(predDSList) <- str_c("pred_", useTF, "_DS")
 
 # predDF <- as_tibble(c(predList, predDSList))
 predDF <- as_tibble(predList)
@@ -663,33 +649,28 @@ modelAll <- glm(
 test[, "pred_all_TF"] <- predict(modelAll, newdata = test, type = 'response')
 
 modelDistOrientation <- glm(
-  loop ~ dist + strandOrientation, 
+  loop ~ dist + strandOrientation + score_min, 
   family = binomial(link = 'logit'), 
   data = train)
-
-test[, "pred_Dist+Orientation"] <- predict(modelDistOrientation, newdata = test, type = 'response')
-
-# test <- test %>% 
-#   mutate(
-#     pred_all <- predict(modelAll, newdata = ., type = 'response'),
-#     pred_dist <- predict(modelDist, newdata = ., type = 'response')
-#   )
-#-----------------------------
+test[, "pred_Dist+Orientation+Motif"] <- predict(modelDistOrientation, newdata = test, type = 'response')
 
 modelDistOnly <- glm(
   loop ~ dist, 
   family = binomial(link = 'logit'), 
   data = train)
-
 test[, "pred_Dist"] <- predict(modelDistOnly, newdata = test, type = 'response')
 
 modelOrientation <- glm(
   loop ~ strandOrientation, 
   family = binomial(link = 'logit'), 
   data = train)
-
 test[, "pred_Orientation"] <- predict(modelOrientation, newdata = test, type = 'response')
 
+modelMotif <- glm(
+  loop ~ score_min, 
+  family = binomial(link = 'logit'), 
+  data = train)
+test[, "pred_Motif"] <- predict(modelOrientation, newdata = test, type = 'response')
 
 save(train, test, file = paste0(outPrefix, ".train_test.Rdata"))
 
@@ -697,7 +678,7 @@ save(train, test, file = paste0(outPrefix, ".train_test.Rdata"))
 # Model parameters
 #-------------------------------------------------------------------------------
 modelList <- bplapply(useTF, function(name) {
-  design <- as.formula(paste0("loop ~ ", " dist + strandOrientation + cor_", name))
+  design <- as.formula(paste0("loop ~ ", " dist + strandOrientation + score_min + cor_", name))
   
   model <- glm(
     design, 
@@ -763,10 +744,10 @@ ranked_models <- auc( evalmod(modelData) ) %>%
   select(modnames) %>% 
   unlist()
 
-COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray30", "lightblue", "orange", "lightgreen", "gray70")
+COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray30", "lightblue", "orange", "lightgreen", "lightred", "gray70")
 
 # build color vector with TFs as names
-non_TF_models <- c("all_TF", "Dist+Orientation", "Dist", "Orientation", "across_TFs")
+non_TF_models <- c("all_TF", "Dist+Orientation+Motif", "Dist", "Orientation", "Motif", "across_TFs")
 TF_models <- ranked_models[!ranked_models %in% non_TF_models]
 COL_TF <- COL_TF[seq(1, length(ranked_models))]
 names(COL_TF) <- c(TF_models, non_TF_models)
