@@ -16,13 +16,13 @@ require(stringr)    # for string function and regular expressions
 require(venneuler)  # for Venn-Euler diagram (area propotional)
 require(VennDiagram)# for VennDiagrams
 require(BiocParallel) # for parallelisation
-require(biobroom)     # to make BioC classes tidy
+# require(biobroom)     # to make BioC classes tidy
 require(grid)         # for textGrob
 
 #-----------------------------------------------------------------------
 # Options for parallel computation
 # use all available cores but generate random number streams on each worker
-multicorParam <- MulticoreParam(RNGseed=34312)
+multicorParam <- MulticoreParam(RNGseed = 34312)
 # set options
 register(multicorParam)
 # bpparam() # to print current options
@@ -148,8 +148,6 @@ if (!GI_LOCAL) {
       geom_histogram() + 
       geom_vline(xintercept = MIN_MOTIF_SIG) +
       labs(x="Motif hit significance [-log10(p-value)]") + 
-      annotation_custom(textGrob("there"), 
-                        xmin = MIN_MOTIF_SIG, xmax = Inf, ymin = -Inf, ymax = Inf)
     ggsave(p, file = paste0(outPrefix, ".ancGR.motif_sig.histogram.pdf"), w = 7, h = 7)
     
     sigDF %>% 
@@ -252,20 +250,23 @@ if (!GI_LOCAL ) {
     
   }
   
-  # Annotae with correlation across TFs -------------------------------------
-  
-  covCols <- paste0("cov_", meta$name)
-  covDF <- as_tibble(as.data.frame(mcols(regions(gi))[,covCols])) %>% 
-    mutate_all(.funs = purrr::map_dbl, .f = sum)
-  
-  mcols(regions(gi))[, "cov_sum"] <- NumericList(as_tibble(t(covDF)))
-  
-  gi <- chromloop::applyToCloseGI(
-    gi, 
-    datcol = "cov_sum",
-    fun = cor, 
-    colname = "cor_across_TFs"
-  )
+  # # Annotae with correlation across TFs -------------------------------------
+  # 
+  # covCols <- paste0("cov_", meta$name)
+  # covColDF <- as_tibble(as.data.frame(mcols(regions(gi))[,covCols]))
+  # covDF <- covColDF %>% 
+  #   mutate_all(.funs = purrr::map_dbl, .f = sum)
+  #   
+  # ##mutate_all(.funs = purrr::map_dbl, .f = sum)
+  # 
+  # mcols(regions(gi))[, "cov_sum"] <- NumericList(as_tibble(t(covDF)))
+  # 
+  # gi <- chromloop::applyToCloseGI(
+  #   gi, 
+  #   datcol = "cov_sum",
+  #   fun = cor, 
+  #   colname = "cor_across_TFs"
+  # )
 
   # save file for faster reload
   save(gi, file = paste0(outPrefix, ".gi.Rdata"))
@@ -303,7 +304,7 @@ if (TRUE_LOOPS == "HIC_ChIAPET_CaptureC") {
 df <- df %>% 
   select(id, loop, everything())
 
-# save(df, file = paste0(outPrefix, ".df.Rdata"))  
+save(df, file = paste0(outPrefix, ".df.Rdata"))  
 # load(paste0(outPrefix, ".df.Rdata"))  
 
 
@@ -496,7 +497,7 @@ p <- ggplot(df, aes(x = min_sig, color = loop)) +
   labs(x = "Significane of min motif hit [-log10(p)]")
 ggsave(p, file = paste0(outPrefix, ".gi.min_motif_th_by_loop.pdf"), w = 6, h = 3)
 
-loop <- df$loop == "Loop"
+#loop <- df$loop == "Loop"
 
 balanceDF <- tibble(
   min_sig = seq_range(c(5,8), 9, pretty = TRUE),
@@ -543,13 +544,15 @@ p <- df %>%
   ) %>% 
   ggplot(aes(x = strandOrientation, y = n, fill = strandOrientation)) + 
   geom_bar(stat = "identity", color = "black") +
-  geom_text(aes(label = n), vjust = 2) +
+  geom_text(aes(label = n), vjust = "inward", size = 5) +
   facet_grid(loop ~ . , scales = "free_y") + 
   theme_bw() + 
   theme(
+    text = element_text(size = 20),
     axis.text.x = element_text(angle = 45, hjust = 1),
     legend.position = "none") + 
   labs(x = "Motif orientation", y = "Number of pairs")
+p
 
 ggsave(p, file = paste0(outPrefix, "n_by_strand_and_loop.barplot.pdf"),
        w = 5, h = 5)
@@ -591,7 +594,8 @@ ggsave(p, file = paste0(outPrefix, ".cor.by_TF_and_loop.boxplot.pdf"), w = 14, h
 # Predict loops --------------------------------------------------------
 # ------------------------------------------------------------------------------
 
-useTF <- c(meta$name, "across_TFs")
+# useTF <- c(meta$name, "across_TFs")
+useTF <- meta$name
 # useTF <- c("CTCF", "Stat1")
 
 
@@ -641,7 +645,7 @@ test <- bind_cols(test, predDF)
 
 # add modles of all TF and only dist
 
-designAll <- as.formula(paste0("loop ~ dist + strandOrientation + ", paste(paste0("cor_", useTF), collapse = " + ")))
+designAll <- as.formula(paste0("loop ~ dist + strandOrientation + score_min + ", paste(paste0("cor_", useTF), collapse = " + ")))
 modelAll <- glm(
   designAll,
   family = binomial(link = 'logit'),
@@ -673,6 +677,9 @@ modelMotif <- glm(
 test[, "pred_Motif"] <- predict(modelOrientation, newdata = test, type = 'response')
 
 save(train, test, file = paste0(outPrefix, ".train_test.Rdata"))
+# load(paste0(outPrefix, ".train_test.Rdata"))
+# useTF <- c(meta$name, "across_TFs")
+# useTF <- meta$name
 
 #-------------------------------------------------------------------------------
 # Model parameters
@@ -721,13 +728,20 @@ ggsave(p, file = paste0(outPrefix, ".paramter.barplot.pdf"), w = 6, h = 3)
 # ggsave(p, file = paste0(outPrefix, ".exp_paramter.barplot.pdf"), w = 6, h = 3)
 
 
-
 #-------------------------------------------------------------------------------
 # Analyse performace for different models -------------------------------------
 #-------------------------------------------------------------------------------
 
 # model_names <- c(useTF, paste0(useTF, "_DS"), "dist", "all_TF")
-model_names <- c(useTF, "all_TF", "Dist+Orientation", "Dist", "Orientation")
+model_names <- c(useTF, "all_TF", "Dist+Orientation+Motif", "Dist", "Orientation", "Motif")
+
+# plot ROC and PRC
+debugModelData <-  mmdata(
+  scores = test$cor_Stat1[1:100],
+  labels = test$loop[1:100] == "Loop",
+)
+autoplot(evalmod(debugModelData))
+
 
 # plot ROC and PRC
 modelData <-  mmdata(
@@ -744,10 +758,12 @@ ranked_models <- auc( evalmod(modelData) ) %>%
   select(modnames) %>% 
   unlist()
 
-COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray30", "lightblue", "orange", "lightgreen", "lightred", "gray70")
+# COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray30", "cornflowerblue", "orange", "lightgreen", "indianred1", "gray70")
+COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray30", "cornflowerblue", "orange", "lightgreen", "indianred1")
 
 # build color vector with TFs as names
-non_TF_models <- c("all_TF", "Dist+Orientation+Motif", "Dist", "Orientation", "Motif", "across_TFs")
+# non_TF_models <- c("all_TF", "Dist+Orientation+Motif", "Dist", "Orientation", "Motif", "across_TFs")
+non_TF_models <- c("all_TF", "Dist+Orientation+Motif", "Dist", "Orientation", "Motif")
 TF_models <- ranked_models[!ranked_models %in% non_TF_models]
 COL_TF <- COL_TF[seq(1, length(ranked_models))]
 names(COL_TF) <- c(TF_models, non_TF_models)
@@ -755,7 +771,7 @@ names(COL_TF) <- c(TF_models, non_TF_models)
 
 # build model again with ordered modelnames
 modelData <-  mmdata(
-  scores = as.list(select(test, one_of(str_c("pred_", ranked_models)))),
+  scores = as.list(select(test, one_of(str_c("pred_", ranked_models[1:2])))),
   labels = test$loop,
   modnames = ranked_models,
   posclass = "Loop"
@@ -775,9 +791,11 @@ aucDF <- auc(curves) %>%
 p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = modnames)) +
   geom_bar(stat = "identity", color = "black") +
   geom_text(aes(label = round(aucs, 2)), vjust = 1.5) +
-  facet_grid(curvetypes ~ ., scales = "free_x") +
+  facet_grid(curvetypes ~ ., scales = "free_y") +
   theme_bw() +
-  theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "none") +
+  theme(text = element_text(size = 15),
+        axis.text.x = element_text(angle = 60, hjust = 1, size = 15),
+        legend.position = "none") +
   scale_fill_manual(values = COL_TF) +
   labs(x = "Models", y = "AUC")
 # p
@@ -799,7 +817,7 @@ g <- autoplot(curves, "ROC") +
                                           reverse = TRUE)) + 
   theme(legend.position=c(.75,.45)) # , legend.text = element_text(size = 7)
 # g
-ggsave(g, file= paste0(outPrefix, ".ROC_new.pdf"), w = 5, h = 5)
+ggsave(g, file = paste0(outPrefix, ".ROC_new.pdf"), w = 5, h = 5)
 
 # get PRC plots
 aucDFprc <- aucDF %>% 
