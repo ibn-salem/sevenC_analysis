@@ -306,6 +306,8 @@ mkdir -p Tang2015
 #=======================================================================
 # ChIP-nexus data from Tang2015 
 #=======================================================================
+# GEO https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM1872890
+
 # download SRA tool
 wget https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/2.8.2-1/sratoolkit.2.8.2-1-ubuntu64.tar.gz
 
@@ -314,3 +316,10 @@ gunzip sratoolkit.2.8.2-1-ubuntu64.tar.gz
 
 # get SRA of RAD21 ChIP-nexus
 ./sratoolkit.2.8.2-1-ubuntu64/bin/fastq-dump -O Tang2015 --gzip SRR2312570
+./sratoolkit.2.8.2-1-ubuntu64/bin/fastq-dump -O Tang2015 --gzip SRR2312571
+
+#=======================================================================
+# Process ChIP-nexus data with the Q-nexus pipeline
+#=======================================================================
+Q_BIN="../../Q/bin/"
+
