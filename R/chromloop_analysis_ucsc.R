@@ -648,41 +648,26 @@ test <- bind_cols(test, predDF)
 
 # add modles of all TF and only dist
 
-designAll <- as.formula(paste0("loop ~ dist + strandOrientation + score_min + ", paste(paste0("cor_", useTF), collapse = " + ")))
-modelAll <- glm(
-  designAll,
-  family = binomial(link = 'logit'),
-  data = train)
-test[, "pred_all_TF"] <- predict(modelAll, newdata = test, type = 'response')
+designList <- list(
+  "all_TF" = as.formula(paste0("loop ~ dist + strandOrientation + score_min + ", paste(paste0("cor_", useTF), collapse = " + "))),
+  "Dist+Orientation+Motif" = loop ~ dist + strandOrientation + score_min,
+  "Dist" =  loop ~ dist,
+  "Orientation" = loop ~ strandOrientation,
+  "Motif" = loop ~ score_min
+)
 
-modelDistOrientation <- glm(
-  loop ~ dist + strandOrientation + score_min, 
-  family = binomial(link = 'logit'), 
-  data = train)
-test[, "pred_Dist+Orientation+Motif"] <- predict(modelDistOrientation, newdata = test, type = 'response')
-
-modelDistOnly <- glm(
-  loop ~ dist, 
-  family = binomial(link = 'logit'), 
-  data = train)
-test[, "pred_Dist"] <- predict(modelDistOnly, newdata = test, type = 'response')
-
-modelOrientation <- glm(
-  loop ~ strandOrientation, 
-  family = binomial(link = 'logit'), 
-  data = train)
-test[, "pred_Orientation"] <- predict(modelOrientation, newdata = test, type = 'response')
-
-modelMotif <- glm(
-  loop ~ score_min, 
-  family = binomial(link = 'logit'), 
-  data = train)
-test[, "pred_Motif"] <- predict(modelOrientation, newdata = test, type = 'response')
+for (modName in names(designList)) {
+  design <- designList[[modName]]
+  model <- glm(
+    design,
+    family = binomial(link = 'logit'),
+    data = train)
+  test[, str_c("pred_", modName)] <- predict(model, newdata = test, type = 'response')
+}
 
 ################################################################################
 save(train, test, file = paste0(outPrefix, ".train_test.Rdata"))
 # load(paste0(outPrefix, ".train_test.Rdata"))
-# useTF <- c(meta$name, "across_TFs")
 # useTF <- meta$name
 ################################################################################
 
@@ -809,12 +794,11 @@ g <- autoplot(curves, "ROC") +
   # coord_cartesian(expand = FALSE) + 
   scale_color_manual(values = COL_TF,
                      labels = paste0(
-                       str_pad(str_c(aucDFroc$modnames, ":"), 30, "right"),
-                        "AUC=", 
-                       signif(aucDFroc$aucs,3)),
+                       aucDFroc$modnames, 
+                       " (AUC=", signif(aucDFroc$aucs,3), ")"),
                      guide = guide_legend(override.aes = list(size = 1.5),
                                           reverse = TRUE)) + 
-  theme(legend.position=c(.75,.45)) # , legend.text = element_text(size = 7)
+  theme(legend.position = c(.75,.45)) # , legend.text = element_text(size = 7)
 #g
 ggsave(g, file = paste0(outPrefix, ".ROC_new.pdf"), w = 5, h = 5)
 
@@ -826,8 +810,7 @@ g <- autoplot(curves, "PRC", size = 4) +
   scale_color_manual(values = COL_TF,
                      labels = paste0(
                        aucDFprc$modnames, 
-                       ": AUC=", 
-                       signif(aucDFprc$aucs,3)),
+                       " (AUC=", signif(aucDFprc$aucs,3)), ")",
                      guide = guide_legend(override.aes = list(size = 2),
                                           reverse = TRUE)) +
   # theme(legend.position=c(.75,.6))
