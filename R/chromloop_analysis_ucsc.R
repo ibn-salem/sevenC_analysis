@@ -4,22 +4,24 @@
 
 
 require(chromloop)    # devtools::install_github("ibn-salem/chromloop")
+require(rtracklayer)  # to import() BED files
+require(BiocParallel) # for parallelisation
+
+require(RColorBrewer)   # for nice colors
+require(colorRamps)  # to pick different colors
+require(precrec)      # for ROC and PRC curves
+require(scales)     # for scales in plotting and percent() formatin function
+
+# require(venneuler)  # for Venn-Euler diagram (area propotional)
+# require(VennDiagram)# for VennDiagrams
+
+# require(biobroom)     # to make BioC classes tidy
+require(grid)         # for textGrob
 require(tidyverse)    # for tidy data
 require(stringr)      # for string functions
 require(modelr)       # for tidy modeling
-require(precrec)      # for ROC and PRC curves
-require(RColorBrewer)   # for nice colors
-require(rtracklayer)  # to import() BED files
-require(colorRamps)  # to pick different colors
-require(scales)     # for scales in plotting and percent() formatin function
-require(stringr)    # for string function and regular expressions
-require(venneuler)  # for Venn-Euler diagram (area propotional)
-require(VennDiagram)# for VennDiagrams
-require(BiocParallel) # for parallelisation
-# require(biobroom)     # to make BioC classes tidy
-require(grid)         # for textGrob
 
-#-----------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 # Options for parallel computation
 # use all available cores but generate random number streams on each worker
 multicorParam <- MulticoreParam(RNGseed = 34312)
@@ -147,7 +149,8 @@ if (!GI_LOCAL) {
       ggplot(aes(x = sig)) + 
       geom_histogram() + 
       geom_vline(xintercept = MIN_MOTIF_SIG) +
-      labs(x="Motif hit significance [-log10(p-value)]") + 
+      labs(x="Motif hit significance [-log10(p-value)]")
+    
     ggsave(p, file = paste0(outPrefix, ".ancGR.motif_sig.histogram.pdf"), w = 7, h = 7)
     
     sigDF %>% 
@@ -676,10 +679,12 @@ modelMotif <- glm(
   data = train)
 test[, "pred_Motif"] <- predict(modelOrientation, newdata = test, type = 'response')
 
+################################################################################
 save(train, test, file = paste0(outPrefix, ".train_test.Rdata"))
 # load(paste0(outPrefix, ".train_test.Rdata"))
 # useTF <- c(meta$name, "across_TFs")
 # useTF <- meta$name
+################################################################################
 
 #-------------------------------------------------------------------------------
 # Model parameters
@@ -735,21 +740,15 @@ ggsave(p, file = paste0(outPrefix, ".paramter.barplot.pdf"), w = 6, h = 3)
 # model_names <- c(useTF, paste0(useTF, "_DS"), "dist", "all_TF")
 model_names <- c(useTF, "all_TF", "Dist+Orientation+Motif", "Dist", "Orientation", "Motif")
 
-# plot ROC and PRC
-debugModelData <-  mmdata(
-  scores = test$cor_Stat1[1:100],
-  labels = test$loop[1:100] == "Loop",
-)
-autoplot(evalmod(debugModelData))
 
-
-# plot ROC and PRC
+# get mmdata object
 modelData <-  mmdata(
   scores = as.list(select(test, one_of(str_c("pred_", model_names)))),
   labels = test$loop,
   modnames = model_names,
   posclass = "Loop"
 )
+
 
 # get rank of models
 ranked_models <- auc( evalmod(modelData) ) %>% 
@@ -771,7 +770,7 @@ names(COL_TF) <- c(TF_models, non_TF_models)
 
 # build model again with ordered modelnames
 modelData <-  mmdata(
-  scores = as.list(select(test, one_of(str_c("pred_", ranked_models[1:2])))),
+  scores = as.list(dplyr::select(test, one_of(str_c("pred_", ranked_models)))),
   labels = test$loop,
   modnames = ranked_models,
   posclass = "Loop"
@@ -810,13 +809,13 @@ g <- autoplot(curves, "ROC") +
   # coord_cartesian(expand = FALSE) + 
   scale_color_manual(values = COL_TF,
                      labels = paste0(
-                       aucDFroc$modnames, 
-                       ": AUC=", 
+                       str_pad(str_c(aucDFroc$modnames, ":"), 30, "right"),
+                        "AUC=", 
                        signif(aucDFroc$aucs,3)),
                      guide = guide_legend(override.aes = list(size = 1.5),
                                           reverse = TRUE)) + 
   theme(legend.position=c(.75,.45)) # , legend.text = element_text(size = 7)
-# g
+#g
 ggsave(g, file = paste0(outPrefix, ".ROC_new.pdf"), w = 5, h = 5)
 
 # get PRC plots
