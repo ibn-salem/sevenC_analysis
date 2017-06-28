@@ -9,6 +9,8 @@ chromloop_analysis.html
 # ignore raw data and computed results
 data/README.html
 data/ENCODE/*
+data/UCSC/*
+data/bin/*
 data/Rao2014/*
 data/Tang2015/*
 data/Mifsud2015/*
