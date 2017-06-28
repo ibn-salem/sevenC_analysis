@@ -1,0 +1,17 @@
+file_accession	data_type	TF	output_type	path
+ENCFF846UHE	ChIP-seq	STAT1	signal p-value	data/ENCODE/Experiments/ENCFF846UHE.bigWig
+ENCFF000WEQ	ChIP-seq	STAT1	signal	data/ENCODE/Experiments/ENCFF000WEQ.bigWig
+ENCFF867IGT	ChIP-seq	STAT1	fold change over control	data/ENCODE/Experiments/ENCFF867IGT.bigWig
+wgEncodeSydhTfbsGm12878Stat1StdSig	ChIP-seq	STAT1	signal_UCSC	data/ENCODE/UCSC/wgEncodeSydhTfbsGm12878Stat1StdSig.bigWig
+ENCFF952FQV	ChIP-seq	CTCF	signal p-value	data/ENCODE/Experiments/ENCFF952FQV.bigWig
+ENCFF000ARJ	ChIP-seq	CTCF	signal	data/ENCODE/Experiments/ENCFF000ARJ.bigWig
+ENCFF001HHT	ChIP-seq	CTCF	raw signal	data/ENCODE/Experiments/ENCFF001HHT.bigWig
+ENCFF629AAF	ChIP-seq	CTCF	fold change over control	data/ENCODE/Experiments/ENCFF629AAF.bigWig
+ENCFF000ROP	ChIP-seq	CTCF	base overlap signal	data/ENCODE/Experiments/ENCFF000ROP.bigWig
+wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdSig	ChIP-seq	CTCF	signal_UCSC	data/ENCODE/UCSC/wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdSig.bigWig
+ENCFF000SLA	DNase-seq	DNase-seq	base overlap signal	data/ENCODE/open_chromatin/ENCFF000SLA.bigWig
+ENCFF000SLH	DNase-seq	DNase-seq	signal	data/ENCODE/open_chromatin/ENCFF000SLH.bigWig
+wgEncodeEH000625	ChIP-seq	input	input	data/ENCODE/input/wgEncodeSydhTfbsGm12878InputStdSig.bigWig
+wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1	ChIP-seq	Rad21	qfraq	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam-qfrags_allChr_chip.bed.bedGraph.bw
+wgEncodeSydhTfbsGm12878Stat1StdAlnRep1	ChIP-seq	Stat1	qfraq	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Stat1StdAlnRep1.bam-qfrags_allChr_chip.bed.bedGraph.bw
+wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1	ChIP-seq	CTCF	qfraq	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1.bam-qfrags_allChr_chip.bed.bedGraph.bw
