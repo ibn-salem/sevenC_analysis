@@ -6,6 +6,8 @@
 
 # set some variables here:
 BIN=bin
+Q=../../Q/bin/Q
+
 mkdir -p ${BIN}
 
 #-----------------------------------------------------------------------
@@ -21,6 +23,10 @@ gunzip UCSC/*.gz
 # download liftOver tool from UCSC:
 wget -P ${BIN} http://hgdownload.cse.ucsc.edu/admin/exe/linux.x86_64/liftOver
 chmod u+x ${BIN}/liftOver
+
+# download bedGraphToBigWig tool from UCSC
+wget -P ${BIN} http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/bedGraphToBigWig
+chmod u+x ${BIN}/bedGraphToBigWig
 
 #-----------------------------------------------------------------------
 # specific data sets
@@ -164,6 +170,110 @@ for F in $SELECTED_FIELS; do
     wget -P ENCODE/UCSC http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/${F} 
 done
 
+#=======================================================================
+# Other data types 
+#=======================================================================
+
+#-------------------------------------------------------------------------------
+# Open chromatin (DNase-seq) from ENCODE
+#-------------------------------------------------------------------------------
+# See https://www.encodeproject.org/experiments/ENCSR000EJD/
+# First file is "base overlap signal", second file is "signal"
+mkdir -p ENCODE/open_chromatin
+wget -P ENCODE/open_chromatin https://www.encodeproject.org/files/ENCFF000SLA/@@download/ENCFF000SLA.bigWig
+wget -P ENCODE/open_chromatin https://www.encodeproject.org/files/ENCFF000SLH/@@download/ENCFF000SLH.bigWig
+
+#-------------------------------------------------------------------------------
+# ChIP-seq input data in GM12878
+#-------------------------------------------------------------------------------
+# See: https://www.encodeproject.org/experiments/ENCSR398JTO/
+mkdir p ENCODE/input
+# wget -P ENCODE/input https://www.encodeproject.org/files/ENCFF941TZZ/@@download/ENCFF941TZZ.bam
+# samtools index ENCODE/input/ENCFF941TZZ.bam
+
+wget -P ENCODE/input http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/wgEncodeSydhTfbsGm12878InputStdSig.bigWig
+
+#-------------------------------------------------------------------------------
+# ChIP-seq BAM file for Rad21 in GM12878 from ENCODE / UCSC
+#-------------------------------------------------------------------------------
+# See http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/
+mkdir -p ENCODE/bam
+wget -P ENCODE/bam http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam
+wget -P ENCODE/bam http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam.bai
+
+# and STAT1
+wget -P ENCODE/bam http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/wgEncodeSydhTfbsGm12878Stat1StdAlnRep1.bam
+wget -P ENCODE/bam http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/wgEncodeSydhTfbsGm12878Stat1StdAlnRep1.bam.bai
+
+# and CTCF
+wget -P ENCODE/bam http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1.bam
+wget -P ENCODE/bam http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1.bam.bai
+
+
+# get chromosome sizes
+wget -P UCSC http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/hg19.chrom.sizes
+head -n 24 UCSC/hg19.chrom.sizes > UCSC/hg19.chrom.sizes.real_chroms
+
+# get qfrags as .bed file
+${Q} \
+  --treatment-sample ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam \
+  --out-prefix ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam.qfraq \
+  -w chr12
+
+# get bedgraph file
+bedtools genomecov -bg \
+  -i ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam.qfraq-qfrags-chr22-chip.bed \
+  -g UCSC/hg19.chrom.sizes.real_chroms \
+  > ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam.qfraq-qfrags-chr22-chip.bed.bedGraph
+
+# convert bedGraph into BigWig format
+${BIN}/bedGraphToBigWig \
+  ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam.qfraq-qfrags-chr22-chip.bed \
+  http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/hg19.chrom.sizes \
+  ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam.qfraq-qfrags-chr22-chip.bed.bw
+
+BAM_FILES="
+ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam
+ENCODE/bam/wgEncodeSydhTfbsGm12878Stat1StdAlnRep1.bam
+ENCODE/bam/wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1.bam
+"
+
+# BAM="ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam"
+
+for BAM in $BAM_FILES ; do
+
+  echo INFO: Working on file $BAM
+
+  # iterate over each chromosome
+  cut -f 1 UCSC/hg19.chrom.sizes.real_chroms  | while read CHR
+  do
+    echo INFO: Working on $CHR
+    
+    # get qfrags
+    ${Q} \
+      --treatment-sample ${BAM} \
+      --out-prefix ${BAM} \
+      -w ${CHR}
+    
+  done
+  
+  # combine all chromosome files
+  
+  cat ${BAM}-qfrags-*-chip.bed > ${BAM}-qfrags_allChr_chip.bed
+  
+  # get bedgraph file
+  bedtools genomecov -bg \
+    -i ${BAM}-qfrags_allChr_chip.bed \
+    -g UCSC/hg19.chrom.sizes.real_chroms \
+    > ${BAM}-qfrags_allChr_chip.bed.bedGraph
+  
+  # convert bedGraph into BigWig format
+  ${BIN}/bedGraphToBigWig \
+    ${BAM}-qfrags_allChr_chip.bed.bedGraph \
+    UCSC/hg19.chrom.sizes.real_chroms \
+    ${BAM}-qfrags_allChr_chip.bed.bedGraph.bw
+  
+done
 
 
 #=======================================================================
