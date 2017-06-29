@@ -82,8 +82,7 @@ meta <- meta %>%
     file_exists = file.exists(path)
     ) %>% 
   select(name, file_exists, everything()) %>% 
-  filter(file_exists) %>% 
-  filter(TF != "CTCF")
+  filter(file_exists)
 
 write_tsv(meta, paste(outPrefix, ".meta_filtered.tsv"))
 
@@ -179,7 +178,7 @@ df <- as_tibble(as.data.frame(mcols(gi))) %>%
   select(id, loop, everything())
 
 save(df, file = paste0(outPrefix, ".df.Rdata"))  
-
+# load(paste0(outPrefix, ".df.Rdata"))
 
 # make a tidy DF
 tidyDF <- df %>% 
@@ -201,7 +200,9 @@ p <- ggplot(tidySubDF, aes(x = loop, y = cor)) +
   geom_violin(aes(fill = name), lwd = 1.5) + 
   geom_boxplot(fill = "white", lwd = 1.5, width = .2) +
   facet_grid(. ~ name) + 
-  scale_fill_manual(values = COL_TF, guide_legend(title = "")) +
+  scale_fill_manual(
+    values = colorRampPalette(brewer.pal(12, "Set3"))(nrow(meta)), 
+    guide_legend(title = "")) +
   theme_bw() + 
   theme(
     text = element_text(size=20), 
@@ -313,12 +314,11 @@ curves <- evalmod(modelData)
 # scores <- evalmod(modelData, mode = "basic")
 
 # get AUC of ROC and PRC
-aucDF <- auc(curves) %>%
+aucDF <- as_tibble(auc(curves)) %>%
   left_join(meta, by = c("modnames" = "name")) %>%
   mutate(modnames = factor(modnames, ranked_models))
 
 # barplot of AUCs of ROC and PRC
-
 p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = modnames)) +
   geom_bar(stat = "identity", color = "black") +
   geom_text(aes(label = round(aucs, 2)), vjust = 1.5) +
@@ -331,6 +331,19 @@ p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = modnames)) +
   labs(x = "Models", y = "AUC")
 # p
 ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot_new.pdf"), w = 7, h = 7)
+
+# barplot of AUCs by output type
+p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = TF)) +
+  geom_bar(stat = "identity", color = "black") +
+  geom_text(aes(label = round(aucs, 2)), vjust = 1.5) +
+  facet_grid(curvetypes ~ output_type, scales = "free", space = "free_x") +
+  theme_bw() +
+  theme(text = element_text(size = 15),
+        axis.text.x = element_text(angle = 60, hjust = 1, size = 15),
+        legend.position = "none") +
+  scale_fill_brewer(palette = "Set1") +
+  labs(x = "Models", y = "AUC")
+ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot_by_data_type.pdf"), w = 14, h = 7)
 
 
 # get ROC plots
