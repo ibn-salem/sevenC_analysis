@@ -258,7 +258,6 @@ for BAM in $BAM_FILES ; do
   done
   
   # combine all chromosome files
-  
   cat ${BAM}-qfrags-*-chip.bed > ${BAM}-qfrags_allChr_chip.bed
   
   # get bedgraph file
@@ -266,12 +265,18 @@ for BAM in $BAM_FILES ; do
     -i ${BAM}-qfrags_allChr_chip.bed \
     -g UCSC/hg19.chrom.sizes.real_chroms \
     > ${BAM}-qfrags_allChr_chip.bed.bedGraph
+
+  # is not case-sensitive sorted at line 2906741.  Please use "sort -k1,1 -k2,2n" with LC_COLLATE=C,  or bedSort and try again.
+  export LC_COLLATE=C
+  cat ${BAM}-qfrags_allChr_chip.bed.bedGraph \
+    | sort -k1,1 -k2,2n \
+    > ${BAM}-qfrags_allChr_chip.bed.sorted.bedGraph
   
   # convert bedGraph into BigWig format
   ${BIN}/bedGraphToBigWig \
-    ${BAM}-qfrags_allChr_chip.bed.bedGraph \
+    ${BAM}-qfrags_allChr_chip.bed.sorted.bedGraph \
     UCSC/hg19.chrom.sizes.real_chroms \
-    ${BAM}-qfrags_allChr_chip.bed.bedGraph.bw
+    ${BAM}-qfrags_allChr_chip.bed.sorted.bedGraph.bw
   
 done
 
