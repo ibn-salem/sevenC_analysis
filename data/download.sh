@@ -7,6 +7,7 @@
 # set some variables here:
 BIN=bin
 Q=../../Q/bin/Q
+BEDTOOLS=${BIN}/bedtools2/bin/bedtools
 
 mkdir -p ${BIN}
 
@@ -27,6 +28,15 @@ chmod u+x ${BIN}/liftOver
 # download bedGraphToBigWig tool from UCSC
 wget -P ${BIN} http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/bedGraphToBigWig
 chmod u+x ${BIN}/bedGraphToBigWig
+
+#-----------------------------------------------------------------------
+# download and compile BEDtools:
+#-----------------------------------------------------------------------
+mkdir -p ${BIN}
+wget -P ${BIN} wget https://github.com/arq5x/bedtools2/releases/download/v2.26.0/bedtools-2.26.0.tar.gz
+tar xvfz  ${BIN}/bedtools-2.26.0.tar.gz -C ${BIN}
+make -C ${BIN}/bedtools2
+
 
 #-----------------------------------------------------------------------
 # specific data sets
@@ -214,24 +224,6 @@ wget -P ENCODE/bam http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEn
 wget -P UCSC http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/hg19.chrom.sizes
 head -n 24 UCSC/hg19.chrom.sizes > UCSC/hg19.chrom.sizes.real_chroms
 
-# get qfrags as .bed file
-${Q} \
-  --treatment-sample ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam \
-  --out-prefix ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam.qfraq \
-  -w chr12
-
-# get bedgraph file
-bedtools genomecov -bg \
-  -i ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam.qfraq-qfrags-chr22-chip.bed \
-  -g UCSC/hg19.chrom.sizes.real_chroms \
-  > ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam.qfraq-qfrags-chr22-chip.bed.bedGraph
-
-# convert bedGraph into BigWig format
-${BIN}/bedGraphToBigWig \
-  ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam.qfraq-qfrags-chr22-chip.bed \
-  http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/hg19.chrom.sizes \
-  ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam.qfraq-qfrags-chr22-chip.bed.bw
-
 BAM_FILES="
 ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam
 ENCODE/bam/wgEncodeSydhTfbsGm12878Stat1StdAlnRep1.bam
@@ -261,7 +253,7 @@ for BAM in $BAM_FILES ; do
   cat ${BAM}-qfrags-*-chip.bed > ${BAM}-qfrags_allChr_chip.bed
   
   # get bedgraph file
-  bedtools genomecov -bg \
+  ${BEDTOOLS} genomecov -bg \
     -i ${BAM}-qfrags_allChr_chip.bed \
     -g UCSC/hg19.chrom.sizes.real_chroms \
     > ${BAM}-qfrags_allChr_chip.bed.bedGraph
