@@ -6,7 +6,8 @@
 
 # set some variables here:
 BIN=bin
-Q=../../Q/bin/Q
+Q_DIR=../../Q
+Q=${Q_DIR}/bin/Q
 BEDTOOLS=${BIN}/bedtools2/bin/bedtools
 
 mkdir -p ${BIN}
@@ -28,6 +29,10 @@ chmod u+x ${BIN}/liftOver
 # download bedGraphToBigWig tool from UCSC
 wget -P ${BIN} http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/bedGraphToBigWig
 chmod u+x ${BIN}/bedGraphToBigWig
+
+# download twoBitToFa tool
+wget -P ${BIN} http://hgdownload.cse.ucsc.edu/admin/exe/linux.x86_64/twoBitToFa
+chmod u+x ${BIN}/twoBitToFa
 
 #-----------------------------------------------------------------------
 # download and compile BEDtools:
@@ -280,6 +285,122 @@ for BAM in $BAM_FILES ; do
 done # BAM
 
 #=======================================================================
+# ChIP-nexus data from Tang2015 
+#=======================================================================
+# GEO https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM1872890
+
+# download SRA tool
+wget -P ${BIN} https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/2.8.2-1/sratoolkit.2.8.2-1-centos_linux64.tar.gz
+tar xvfz  ${BIN}/sratoolkit.2.8.2-1-centos_linux64.tar.gz -C ${BIN}
+SRA_DIR=sratoolkit.2.8.2-1-centos_linux64
+
+#=======================================================================
+# get Bowtie
+#=======================================================================
+
+wget -P ${BIN} https://kent.dl.sourceforge.net/project/bowtie-bio/bowtie2/2.3.2/bowtie2-2.3.2-linux-x86_64.zip
+unzip ${BIN}/bowtie2-2.3.2-linux-x86_64.zip -d ${BIN}
+
+
+#-------------------------------------------------------------------------------
+# get human reference genome:
+#-------------------------------------------------------------------------------
+# wget -P UCSC http://hgdownload.soe.ucsc.edu/goldenPath/hg19/bigZips/hg19.2bit
+# ${BIN}/twoBitToFa UCSC/hg19.2bit  UCSC/hg19.fa
+# 
+# # build index for mapping with bowtie
+# ./${BIN}/bowtie-1.2.1.1/bowtie-build UCSC/hg19.fa UCSC/hg19.fa
+
+mkdir -p hg19
+wget -P hg19 ftp://ftp.ccb.jhu.edu/pub/data/bowtie2_indexes/hg19.zip
+unzip hg19/hg19.zip -d hg19
+
+
+#-------------------------------------------------------------------------------
+# get SRA of RAD21 ChIP-nexus
+#-------------------------------------------------------------------------------
+./bin/sratoolkit.2.8.2-1-ubuntu64/bin/fastq-dump -O Tang2015 --gzip SRR2312570
+./bin/sratoolkit.2.8.2-1-ubuntu64/bin/fastq-dump -O Tang2015 --gzip SRR2312571
+
+#=======================================================================
+# Process ChIP-nexus data with the Q-nexus pipeline
+#=======================================================================
+
+for SAMPLE in "SRR2312570" "SRR2312571" ; do
+  
+  # 1) flexcat: Adapter Trimming and filtering for fixed Barcode
+  ${Q_DIR}/bin/flexcat_noavx2 Tang2015/${SAMPLE}.fastq.gz \
+    -tl 5 -tt -t -ml 0 -er 0.2 -ol 4 -app -ss \
+    -a ${Q_DIR}/data/adapters.fa \
+    -b ${Q_DIR}/data/barcodes.fa \
+    -tnum 20 \
+    -o Tang2015/${SAMPLE}.flexcat.fastq
+
+  # Mapping:
+  ${BIN}/bowtie2-2.3.2/bowtie2 \
+    -p 20 \
+    -x hg19/hg19 \
+    -U Tang2015/${SAMPLE}.flexcat_matched_barcode.fastq \
+    -S Tang2015/${SAMPLE}.flexcat_matched_barcode.fastq.bowtie2.hg19.sam
+
+  # 2) remove duplicates
+  ${Q_DIR}/bin/nexcat \
+    Tang2015/${SAMPLE}.flexcat_matched_barcode.fastq.bowtie2.hg19.sam \
+    -fc "(.*)[H|U|M|_]+(.*)"
+  
+  BAM=Tang2015/${SAMPLE}.flexcat_matched_barcode.fastq.bowtie2.hg19_filtered.bam
+  
+  # iterate over each chromosome
+  cut -f 1 UCSC/hg19.chrom.sizes.real_chroms  | while read CHR
+  do
+    echo INFO: Working on $CHR
+    
+    # get qfrags
+    ${Q} --nexus-mode -t ${BAM} -o ${BAM} -w ${CHR}
+    
+  done
+  
+  # iterate over output types
+  for OUT_TYPE in "qfrags" "shifted-reads" ; do
+    
+    echo "INFO output type:" $OUT_TYPE 
+
+    # combine all chromosome files
+    cat ${BAM}-${OUT_TYPE}-*-chip.bed > ${BAM}-${OUT_TYPE}_allChr_chip.bed
+    
+    # get bedgraph file
+    ${BEDTOOLS} genomecov -bg \
+      -i ${BAM}-${OUT_TYPE}_allChr_chip.bed \
+      -g UCSC/hg19.chrom.sizes.real_chroms \
+      > ${BAM}-${OUT_TYPE}_allChr_chip.bed.bedGraph
+  
+    # is not case-sensitive sorted at line 2906741.  Please use "sort -k1,1 -k2,2n" with LC_COLLATE=C,  or bedSort and try again.
+    export LC_COLLATE=C
+    cat ${BAM}-${OUT_TYPE}_allChr_chip.bed.bedGraph \
+      | sort -k1,1 -k2,2n \
+      > ${BAM}-${OUT_TYPE}_allChr_chip.bed.sorted.bedGraph
+    
+    # convert bedGraph into BigWig format
+    ${BIN}/bedGraphToBigWig \
+      ${BAM}-${OUT_TYPE}_allChr_chip.bed.sorted.bedGraph \
+      UCSC/hg19.chrom.sizes.real_chroms \
+      ${BAM}-${OUT_TYPE}_allChr_chip.bed.sorted.bedGraph.bw
+
+  done  # OUT_TYPE
+  
+
+done # SAMPLE
+  
+# can be used as:
+# ${BIN}/bowtie-1.2.1.1/bowtie
+
+#=======================================================================
+# DNA shape from GBshape
+#=======================================================================
+# mkdir -p GBshape
+# wget -P GBshape ftp://rohslab.usc.edu/hg19/
+
+#=======================================================================
 # OLD PARTS (do not run)
 #=======================================================================
 
@@ -420,23 +541,4 @@ mkdir -p Tang2015
 # wget -P Tang2015 ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1872nnn/GSM1872891/suppl/GSM1872891%5FGM12878%5FSMC3%5Fnexus%5FMACE%5Fforward.bw
 # wget -P Tang2015 ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM1872nnn/GSM1872891/suppl/GSM1872891%5FGM12878%5FSMC3%5Fnexus%5FMACE%5Freverse.bw
 
-#=======================================================================
-# ChIP-nexus data from Tang2015 
-#=======================================================================
-# GEO https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM1872890
-
-# download SRA tool
-wget https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/2.8.2-1/sratoolkit.2.8.2-1-ubuntu64.tar.gz
-
-# extract rsa tool
-gunzip sratoolkit.2.8.2-1-ubuntu64.tar.gz
-
-# get SRA of RAD21 ChIP-nexus
-./sratoolkit.2.8.2-1-ubuntu64/bin/fastq-dump -O Tang2015 --gzip SRR2312570
-./sratoolkit.2.8.2-1-ubuntu64/bin/fastq-dump -O Tang2015 --gzip SRR2312571
-
-#=======================================================================
-# Process ChIP-nexus data with the Q-nexus pipeline
-#=======================================================================
-Q_BIN="../../Q/bin/"
 
