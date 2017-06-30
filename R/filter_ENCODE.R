@@ -117,15 +117,15 @@ ggsave(str_c(outPrefix, ".size_by_outputType_and_nrep.boxplot.pdf"))
 
 
 # Filter for used data sets -----------------------------------------------
-df %>% 
-  filter(`Output type` %in% c("signal")) %>%
-  distinct(TF) %>%
-  summarize(
-    nUsed = sum(TF %in% useTFs),
-    percentUsed = nUsed / length(useTFs) * 100,
-    n = n()
-  )
-
+# df %>% 
+#   filter(`Output type` %in% c("signal")) %>%
+#   distinct(TF) %>%
+#   summarize(
+#     nUsed = sum(TF %in% useTFs),
+#     percentUsed = nUsed / length(useTFs) * 100,
+#     n = n()
+#   )
+# 
 
   # # filter(`Biological replicate(s)` == "1" | is.na(rep)) %>% 
   # # filter(map_lgl(rep, setequal, 1:2) | is.na(rep)) %>% 
@@ -182,9 +182,9 @@ fltOuttype <- df %>%
   # filter(`Biological replicate(s)` == "1" | is.na(rep)) %>% 
   # filter(map_lgl(rep, setequal, 1:2) | is.na(rep)) %>% 
   # filter(file_nrep == 2 | `Output type` == "raw signal") %>% 
-  filter(rep == "1" | is.na(rep)) %>%
-  filter(`Biosample term name` == "GM12878") %>%
-  filter(TF %in% c("CTCF", "REST", "STAT1")) %>%
+  # filter(rep == "1" | is.na(rep)) %>%
+  # filter(`Biosample term name` == "GM12878") %>%
+  filter(TF %in% c("CTCF", "REST", "STAT1", "RAD21")) %>%
   distinct(`Output type`, TF, .keep_all = TRUE) %>%
   mutate(usedTF = TF %in% useTFs) %>%
   arrange(desc(TF), desc(`Output type`)) %>%

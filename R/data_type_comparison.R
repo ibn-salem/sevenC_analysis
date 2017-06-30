@@ -340,7 +340,7 @@ p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = TF)) +
   theme_bw() +
   theme(text = element_text(size = 15),
         axis.text.x = element_text(angle = 60, hjust = 1, size = 15),
-        legend.position = "none") +
+        legend.position = "right") +
   scale_fill_brewer(palette = "Set1") +
   labs(x = "Models", y = "AUC")
 ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot_by_data_type.pdf"), w = 14, h = 7)
