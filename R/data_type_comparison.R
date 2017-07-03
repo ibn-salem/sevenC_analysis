@@ -224,157 +224,169 @@ testCases <- sample.int(nrow(df), size = round(nrow(df)/10))
 train <- df[-testCases,]
 test <- df[testCases,]
 
+TRUE_LOOP_COLS <- c("loop", "Loop_Rao_GM12878", "Loop_Tang2015_GM12878_CTCF", "Loop_Tang2015_GM12878_PolII")
 
-predList <- lapply(meta$name, function(name) {
+for (LOOP in TRUE_LOOP_COLS) {
+  
+  outPrefixLoop <- paste0(outPrefix, ".", LOOP)
+  
+  # overwrite "loop" column with specific column
+  train <- train %>% 
+    mutate(loop = get(LOOP, envir = as.environment(.)))
+  test <- test %>% 
+    mutate(loop = get(LOOP, envir = as.environment(.)))
+  
+  predList <- lapply(meta$name, function(name) {
     
-  message("INFO: Fit model for TF: ", name)
+    message("INFO: Fit model for TF: ", name)
     
-  design <- as.formula(paste0("loop ~ ", " dist + strandOrientation + score_min + cor_", name))
+    design <- as.formula(paste0("loop ~ ", " dist + strandOrientation + score_min + cor_", name))
+    
+    model <- glm(
+      design, 
+      family = binomial(link = 'logit'), 
+      data = train)
+    
+    message("INFO: Predict loops with model: ", name)
+    
+    return( predict(model, newdata = test, type = 'response') )
+  })
   
-  model <- glm(
-    design, 
-    family = binomial(link = 'logit'), 
-    data = train)
+  names(predList) <- str_c("pred_", meta$name)
   
-  message("INFO: Predict loops with model: ", name)
+  test <- bind_cols(test, as_tibble(predList))
   
-  return( predict(model, newdata = test, type = 'response') )
-})
-
-names(predList) <- str_c("pred_", meta$name)
-
-test <- bind_cols(test, as_tibble(predList))
-
-# add modles of all TF and only dist
-designList <- list(
-  "Dist+Orientation+Motif" = loop ~ dist + strandOrientation + score_min,
-  "Dist" =  loop ~ dist,
-  "Orientation" = loop ~ strandOrientation,
-  "Motif" = loop ~ score_min
-)
-
-for (modName in names(designList)) {
-  design <- designList[[modName]]
-  model <- glm(
-    design,
-    family = binomial(link = 'logit'),
-    data = train)
-  test[, str_c("pred_", modName)] <- predict(model, newdata = test, type = 'response')
+  # add modles of all TF and only dist
+  designList <- list(
+    "Dist+Orientation+Motif" = loop ~ dist + strandOrientation + score_min,
+    "Dist" =  loop ~ dist,
+    "Orientation" = loop ~ strandOrientation,
+    "Motif" = loop ~ score_min
+  )
+  
+  for (modName in names(designList)) {
+    design <- designList[[modName]]
+    model <- glm(
+      design,
+      family = binomial(link = 'logit'),
+      data = train)
+    test[, str_c("pred_", modName)] <- predict(model, newdata = test, type = 'response')
+  }
+  
+  ################################################################################
+  save(train, test, file = paste0(outPrefixLoop, ".train_test.Rdata"))
+  # load(paste0(outPrefixLoop, ".train_test.Rdata"))
+  # useTF <- meta$name
+  ################################################################################
+  
+  #-------------------------------------------------------------------------------
+  # Analyse performace for different models -------------------------------------
+  #-------------------------------------------------------------------------------
+  
+  model_names <- c(meta$name, names(designList))
+  
+  # get mmdata object
+  modelData <-  mmdata(
+    scores = as.list(select(test, one_of(str_c("pred_", model_names)))),
+    labels = test$loop,
+    modnames = model_names,
+    posclass = "Loop"
+  )
+  
+  # get rank of models
+  ranked_models <- auc( evalmod(modelData) ) %>% 
+    filter(curvetypes == "PRC") %>% 
+    arrange(aucs) %>% 
+    select(modnames) %>% 
+    unlist()
+  
+  # COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray30", "cornflowerblue", "orange", "lightgreen", "indianred1", "gray70")
+  # COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray30", "cornflowerblue", "orange", "lightgreen", "indianred1")
+  COL_TF <- colorRampPalette(brewer.pal(12, "Set3"))(length(model_names))
+  
+  # build color vector with TFs as names
+  # non_TF_models <- c("all_TF", "Dist+Orientation+Motif", "Dist", "Orientation", "Motif", "across_TFs")
+  # non_TF_models <- c("all_TF", "Dist+Orientation+Motif", "Dist", "Orientation", "Motif")
+  TF_models <- ranked_models[!ranked_models %in% names(designList)]
+  COL_TF <- COL_TF[seq(1, length(ranked_models))]
+  names(COL_TF) <- c(TF_models, names(designList))
+  
+  
+  # build model again with ordered modelnames
+  modelData <-  mmdata(
+    scores = as.list(dplyr::select(test, one_of(str_c("pred_", ranked_models)))),
+    labels = test$loop,
+    modnames = ranked_models,
+    posclass = "Loop"
+  )
+  
+  # caluclate ROC, PRC, and basic performance scores
+  curves <- evalmod(modelData)
+  # scores <- evalmod(modelData, mode = "basic")
+  
+  # get AUC of ROC and PRC
+  aucDF <- as_tibble(auc(curves)) %>%
+    left_join(meta, by = c("modnames" = "name")) %>%
+    mutate(modnames = factor(modnames, ranked_models))
+  
+  # barplot of AUCs of ROC and PRC
+  p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = modnames)) +
+    geom_bar(stat = "identity", color = "black") +
+    geom_text(aes(label = round(aucs, 2)), vjust = 1.5) +
+    facet_grid(curvetypes ~ ., scales = "free_y") +
+    theme_bw() +
+    theme(text = element_text(size = 15),
+          axis.text.x = element_text(angle = 60, hjust = 1, size = 15),
+          legend.position = "none") +
+    scale_fill_manual(values = COL_TF) +
+    labs(x = "Models", y = "AUC")
+  # p
+  ggsave(p, file = paste0(outPrefixLoop, ".AUC_ROC_PRC.by_TF.barplot_new.pdf"), w = 7, h = 7)
+  
+  # barplot of AUCs by output type
+  p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = TF)) +
+    geom_bar(stat = "identity", color = "black") +
+    geom_text(aes(label = round(aucs, 2)), vjust = 1.5) +
+    facet_grid(curvetypes ~ output_type, scales = "free", space = "free_x") +
+    theme_bw() +
+    theme(text = element_text(size = 15),
+          axis.text.x = element_text(angle = 60, hjust = 1, size = 15),
+          legend.position = "right") +
+    scale_fill_brewer(palette = "Set1") +
+    labs(x = "Models", y = "AUC")
+  ggsave(p, file = paste0(outPrefixLoop, ".AUC_ROC_PRC.by_TF.barplot_by_data_type.pdf"), w = 14, h = 7)
+  
+  
+  # get ROC plots
+  aucDFroc <- aucDF %>% 
+    filter(curvetypes == "ROC")
+  
+  g <- autoplot(curves, "ROC") + 
+    # coord_cartesian(expand = FALSE) + 
+    scale_color_manual(values = COL_TF,
+                       labels = paste0(
+                         aucDFroc$modnames, 
+                         " (AUC=", signif(aucDFroc$aucs,3), ")"),
+                       guide = guide_legend(override.aes = list(size = 1.5),
+                                            reverse = TRUE)) + 
+    theme(legend.position = c(.75,.45)) # , legend.text = element_text(size = 7)
+  #g
+  ggsave(g, file = paste0(outPrefixLoop, ".ROC_new.pdf"), w = 5, h = 5)
+  
+  # get PRC plots
+  aucDFprc <- aucDF %>% 
+    filter(curvetypes == "PRC")
+  
+  g <- autoplot(curves, "PRC", size = 4) +
+    scale_color_manual(values = COL_TF,
+                       labels = paste0(
+                         aucDFprc$modnames, 
+                         " (AUC=", signif(aucDFprc$aucs,3)), ")",
+                       guide = guide_legend(override.aes = list(size = 2),
+                                            reverse = TRUE)) +
+    # theme(legend.position=c(.75,.6))
+    theme(legend.position = "none")
+  # g
+  ggsave(g, file = paste0(outPrefixLoop, ".PRC_new.pdf"), w = 5, h = 5)
+  
 }
-
-################################################################################
-save(train, test, file = paste0(outPrefix, ".train_test.Rdata"))
-# load(paste0(outPrefix, ".train_test.Rdata"))
-# useTF <- meta$name
-################################################################################
-
-#-------------------------------------------------------------------------------
-# Analyse performace for different models -------------------------------------
-#-------------------------------------------------------------------------------
-
-model_names <- c(meta$name, names(designList))
-
-# get mmdata object
-modelData <-  mmdata(
-  scores = as.list(select(test, one_of(str_c("pred_", model_names)))),
-  labels = test$loop,
-  modnames = model_names,
-  posclass = "Loop"
-)
-
-# get rank of models
-ranked_models <- auc( evalmod(modelData) ) %>% 
-  filter(curvetypes == "PRC") %>% 
-  arrange(aucs) %>% 
-  select(modnames) %>% 
-  unlist()
-
-# COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray30", "cornflowerblue", "orange", "lightgreen", "indianred1", "gray70")
-# COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray30", "cornflowerblue", "orange", "lightgreen", "indianred1")
-COL_TF <- colorRampPalette(brewer.pal(12, "Set3"))(length(model_names))
-
-# build color vector with TFs as names
-# non_TF_models <- c("all_TF", "Dist+Orientation+Motif", "Dist", "Orientation", "Motif", "across_TFs")
-# non_TF_models <- c("all_TF", "Dist+Orientation+Motif", "Dist", "Orientation", "Motif")
-TF_models <- ranked_models[!ranked_models %in% names(designList)]
-COL_TF <- COL_TF[seq(1, length(ranked_models))]
-names(COL_TF) <- c(TF_models, names(designList))
-
-
-# build model again with ordered modelnames
-modelData <-  mmdata(
-  scores = as.list(dplyr::select(test, one_of(str_c("pred_", ranked_models)))),
-  labels = test$loop,
-  modnames = ranked_models,
-  posclass = "Loop"
-)
-
-# caluclate ROC, PRC, and basic performance scores
-curves <- evalmod(modelData)
-# scores <- evalmod(modelData, mode = "basic")
-
-# get AUC of ROC and PRC
-aucDF <- as_tibble(auc(curves)) %>%
-  left_join(meta, by = c("modnames" = "name")) %>%
-  mutate(modnames = factor(modnames, ranked_models))
-
-# barplot of AUCs of ROC and PRC
-p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = modnames)) +
-  geom_bar(stat = "identity", color = "black") +
-  geom_text(aes(label = round(aucs, 2)), vjust = 1.5) +
-  facet_grid(curvetypes ~ ., scales = "free_y") +
-  theme_bw() +
-  theme(text = element_text(size = 15),
-        axis.text.x = element_text(angle = 60, hjust = 1, size = 15),
-        legend.position = "none") +
-  scale_fill_manual(values = COL_TF) +
-  labs(x = "Models", y = "AUC")
-# p
-ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot_new.pdf"), w = 7, h = 7)
-
-# barplot of AUCs by output type
-p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = TF)) +
-  geom_bar(stat = "identity", color = "black") +
-  geom_text(aes(label = round(aucs, 2)), vjust = 1.5) +
-  facet_grid(curvetypes ~ output_type, scales = "free", space = "free_x") +
-  theme_bw() +
-  theme(text = element_text(size = 15),
-        axis.text.x = element_text(angle = 60, hjust = 1, size = 15),
-        legend.position = "right") +
-  scale_fill_brewer(palette = "Set1") +
-  labs(x = "Models", y = "AUC")
-ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot_by_data_type.pdf"), w = 14, h = 7)
-
-
-# get ROC plots
-aucDFroc <- aucDF %>% 
-  filter(curvetypes == "ROC")
-
-g <- autoplot(curves, "ROC") + 
-  # coord_cartesian(expand = FALSE) + 
-  scale_color_manual(values = COL_TF,
-                     labels = paste0(
-                       aucDFroc$modnames, 
-                       " (AUC=", signif(aucDFroc$aucs,3), ")"),
-                     guide = guide_legend(override.aes = list(size = 1.5),
-                                          reverse = TRUE)) + 
-  theme(legend.position = c(.75,.45)) # , legend.text = element_text(size = 7)
-#g
-ggsave(g, file = paste0(outPrefix, ".ROC_new.pdf"), w = 5, h = 5)
-
-# get PRC plots
-aucDFprc <- aucDF %>% 
-  filter(curvetypes == "PRC")
-
-g <- autoplot(curves, "PRC", size = 4) +
-  scale_color_manual(values = COL_TF,
-                     labels = paste0(
-                       aucDFprc$modnames, 
-                       " (AUC=", signif(aucDFprc$aucs,3)), ")",
-                     guide = guide_legend(override.aes = list(size = 2),
-                                          reverse = TRUE)) +
-  # theme(legend.position=c(.75,.6))
-  theme(legend.position = "none")
-# g
-ggsave(g, file = paste0(outPrefix, ".PRC_new.pdf"), w = 5, h = 5)
-
