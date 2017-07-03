@@ -184,6 +184,7 @@ fltOuttype <- df %>%
   # filter(file_nrep == 2 | `Output type` == "raw signal") %>% 
   # filter(rep == "1" | is.na(rep)) %>%
   # filter(`Biosample term name` == "GM12878") %>%
+  arrange(date) %>% 
   filter(TF %in% c("CTCF", "REST", "STAT1", "RAD21")) %>%
   distinct(`Output type`, TF, .keep_all = TRUE) %>%
   mutate(usedTF = TF %in% useTFs) %>%
