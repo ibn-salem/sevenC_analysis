@@ -306,6 +306,10 @@ byTF <- tidyDF %>%
   group_by(name) %>% 
   nest()
 
+save(byTF, file = paste0(outPrefix, ".byTF_TMP.Rdata"))  
+# load(paste0(outPrefix, ".byTF_TMP.Rdata"))
+
+
 singleTF_model <- function(df, fold_idx = 1) {
   
   glm(
@@ -342,17 +346,20 @@ for (k in 1:K) {
     )
 }
 
+# save(byTF, file = paste0(outPrefix, ".byTF_TESTING.Rdata"))
 save(byTF, file = paste0(outPrefix, ".byTF.Rdata"))
-
+# load(paste0(outPrefix, ".byTF.Rdata"))
 #-------------------------------------------------------------------------------
 # unpack to by TF and fold
 #-------------------------------------------------------------------------------
 
+# gather models by fold
 byTFfold <- byTF %>%
   gather(starts_with("model_"), key = "fold", value = "model") %>% 
   mutate(
-    fold = parse_integer(str_replace(fold, "model_", ""))
-  )
+    fold = parse_integer(str_replace(fold, "model_", "")), 
+    data = map2(data, fold, function(df, k) filter(df, fold == k))
+    )
 
 # add model quality and mdoel as tidy DF
 byTFfold <- byTFfold %>% 
@@ -369,74 +376,150 @@ modelQualDF <- byTFfold %>%
 write_tsv(modelQualDF, paste0(outPrefix, ".modelQualDF.tsv"))
 
 # get tidy model DF
-modelDF <- byTF %>% 
+modelDF <- byTFfold %>% 
   unnest(tidy_model, .drop = TRUE)
 
 write_tsv(modelDF, paste0(outPrefix, ".modelDF.tsv"))
 
-# 
-# 
-# tidyModel <- map(byTF$model, broom::tidy)
-# names(tidyModel) <- useTF
-# modelDF <- as_tibble(bind_rows(tidyModel, .id = "name"))
-# 
-# modelDF <- modelDF %>% 
-#   mutate(param = str_replace(term, "cor_.*", "cor")) %>% 
-#   mutate(param = str_replace(param, "strandOrientation", "")) %>% 
-#   mutate(param = parse_factor(param, levels = NULL))
-# 
-# write_tsv(modelDF, paste0(outPrefix, ".modelDF.tsv"))
+# add meta data
 modelDF <- modelDF %>% 
   left_join(meta, by = "name")
 
-paramDF <- modelDF %>% 
-  group_by(term) %>% 
+paramByTF <- modelDF %>% 
+  group_by(name, term) %>% 
   summarize(
     n = n(),
-    mean = mean(estimate),
-    sd = sd(estimate)
+    estimate_mean = mean(estimate),
+    estimate_sd = sd(estimate)
   )
-write_tsv(paramDF, paste0(outPrefix, ".paramDF.tsv"))
 
-p <- ggplot(modelDF, aes(x = name, y = estimate, fill = name)) + 
+p <- ggplot(paramByTF, aes(x = name, y = estimate_mean, fill = name)) + 
   geom_bar(stat = "identity", position = "dodge") + 
+  geom_errorbar(aes(
+    ymin = estimate_mean - estimate_sd, 
+    ymax = estimate_mean + estimate_sd), width = 0.25) +
   # geom_text(aes(label = round(estimate, 2)), vjust = "inward") + 
   # facet_grid(param ~ ., scales = "free_y") + 
-  geom_text(aes(label = round(estimate, 2)), hjust = "inward") + 
+  geom_text(aes(label = round(estimate_mean, 2)), hjust = "inward") + 
   facet_grid(. ~ term , scales = "free_x") + 
   coord_flip() +
   labs(y = "Parameter estimate", x = "Model") + 
   theme_bw() + scale_fill_manual(values = COL_TF) + 
   theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
+
 ggsave(p, file = paste0(outPrefix, ".paramter.barplot.pdf"), w = 6, h = 12)
 
-p <- ggplot(modelDF, aes(x = TF, y = estimate, fill = name)) + 
-  geom_bar(stat = "identity", position = "dodge") + 
-  geom_text(aes(label = round(estimate, 2)), hjust = "inward") + 
-  facet_grid(outType ~ term , scales = "free") + 
-  coord_flip() +
-  labs(y = "Parameter estimate", x = "Model") + 
-  theme_bw() + scale_fill_manual(values = COL_TF) + 
-  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
-ggsave(p, file = paste0(outPrefix, ".paramter_by_outType.barplot.pdf"), w = 6, h = 12)
+#-------------------------------------------------------------------------------
+# Analyse performace 
+#-------------------------------------------------------------------------------
 
-# 
-# p <- ggplot(modelDF, aes(x = name, y = exp(estimate), fill = name)) + 
-#   geom_bar(stat = "identity", position = "dodge") + 
-#   # geom_text(aes(label = round(estimate, 2)), vjust = "inward") + 
-#   # facet_grid(param ~ ., scales = "free_y") + 
-#   geom_text(aes(label = round(exp(estimate), 2)), hjust = "inward") + 
-#   facet_grid(. ~ param , scales = "free_x") + 
-#   coord_flip() +
-#   labs(y = "Parameter estimate", x = "Model") + 
-#   theme_bw() + scale_fill_manual(values = COL_TF) + 
-#   theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
-# ggsave(p, file = paste0(outPrefix, ".exp_paramter.barplot.pdf"), w = 6, h = 3)
+evalDF <- byTFfold %>% 
+  mutate(
+    pred =  map(data, function(df) df[["pred"]]),
+    label =  map(data, function(df) df[["loop"]])
+  ) %>% 
+  select(name, fold, pred, label)
 
+posDF <- evalDF %>% 
+  mutate(
+    n_pos = map_dbl(label, function(l) sum(l == "Loop", na.rm = TRUE))
+  )
+
+# get AUC of ROC and PRC curves for all 
+curves <- evalmod(
+      scores = evalDF$pred,
+      label = evalDF$label,
+      modnames = evalDF$name,
+      dsids = evalDF$fold,
+      calc_avg = TRUE)
+
+# get data.frame with auc values
+aucDF <- as_tibble(auc(curves))
+
+# get ranked modle names
+ranked_models <- aucDF %>% 
+  filter(curvetypes == "PRC") %>% 
+  group_by(modnames) %>% 
+  summarize(
+    auc_mean = mean(aucs, na.rm = TRUE)
+  ) %>% 
+  arrange(auc_mean) %>% 
+  select(modnames) %>% 
+  unlist()
+
+# order aucDF by ranks
+aucDF <- aucDF %>% 
+  mutate(
+    modelnames = factor(modelnames, ranked_models)
+  ) %>% 
+  arrange(desc(modelnames))
+
+# get data from fro ggplot
+curveDF <- precrec::fortify(curves)
+
+# build color vector with TFs as names
+# TF_models <- ranked_models
+COL_TF <- COL_TF[seq(1, length(ranked_models))]
+names(COL_TF) <- ranked_models
 
 #-------------------------------------------------------------------------------
-# Analyse performace for different models -------------------------------------
+# barplot of AUCs of ROC and PRC
 #-------------------------------------------------------------------------------
+p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = modnames)) +
+  geom_bar(stat = "identity", color = "black") +
+  geom_text(aes(label = round(aucs, 2)), size = 3, hjust = 1, angle = 90) +
+  facet_grid(curvetypes ~ ., scales = "free") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "none") +
+  scale_fill_manual(values = COL_TF) +
+  labs(x = "Models", y = "AUC")
+# p
+ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot.pdf"), w = 14, h = 7)
+
+# get ROC plots
+aucDFroc <- aucDF %>% 
+  filter(curvetypes == "ROC")
+
+g <- autoplot(curves, "ROC") + 
+  # coord_cartesian(expand = FALSE) + 
+  scale_color_manual(values = COL_TF,
+                     labels = paste0(
+                       aucDFroc$modnames, 
+                       ": AUC=", 
+                       signif(aucDFroc$aucs,3)
+                      ),
+                     guide = guide_legend(
+                      override.aes = list(size = 2),
+                      reverse = TRUE)
+                     ) + 
+  theme(legend.position = c(.75,.4))
+
+# g
+ggsave(g, file= paste0(outPrefix, ".ROC.pdf"), w = 5, h = 5)
+
+# get PRC plots
+aucDFprc <- aucDF %>% 
+  filter(curvetypes == "PRC")
+
+g <- autoplot(curves, "PRC", size = 4) +
+  scale_color_manual(values = COL_TF,
+                     labels = paste0(
+                       aucDFprc$modnames, 
+                       ": AUC=", 
+                       signif(aucDFprc$aucs,3)),
+                     guide = guide_legend(override.aes = list(size = 2),
+                                          reverse = TRUE)) +
+  # theme(legend.position=c(.75,.6))
+  theme(legend.position = "none")
+# g
+ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
+
+
+
+autoplot(curves, show_cb = TRUE)
+#==============================================
+# OLD CODE BELLOW
+#==============================================
 
 # model_names <- c(useTF, paste0(useTF, "_DS"), "dist", "all_TF")
 model_names <- useTF
