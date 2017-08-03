@@ -3,12 +3,13 @@
 #=======================================================================
 # this script is suppost do document all downlaods in the data folder
 #=======================================================================
+module load tools/parallel/20170622
 
 # set some variables here:
-BIN=bin
-Q_DIR=../../Q
-Q=${Q_DIR}/bin/Q
-BEDTOOLS=${BIN}/bedtools2/bin/bedtools
+export BIN=bin
+export Q_DIR=../../Q
+export Q=${Q_DIR}/bin/Q
+export BEDTOOLS=${BIN}/bedtools2/bin/bedtools
 
 mkdir -p ${BIN}
 
@@ -21,6 +22,11 @@ mkdir -p UCSC
 wget -P UCSC http://hgdownload.cse.ucsc.edu/goldenPath/hg19/liftOver/hg19ToHg18.over.chain.gz
 wget -P UCSC http://hgdownload.cse.ucsc.edu/goldenPath/hg18/liftOver/hg18ToHg19.over.chain.gz
 gunzip UCSC/*.gz
+
+# get chromosome sizes
+wget -P UCSC http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/hg19.chrom.sizes
+head -n 24 UCSC/hg19.chrom.sizes > UCSC/hg19.chrom.sizes.real_chroms
+
 
 # download liftOver tool from UCSC:
 wget -P ${BIN} http://hgdownload.cse.ucsc.edu/admin/exe/linux.x86_64/liftOver
@@ -65,8 +71,6 @@ make -C ${BIN}/bedtools2
 #~ output".
 # SOURCE: http://redmine.soe.ucsc.edu/forum/index.php?t=msg&goto=18147&S=216396035f6ccb52545e9b1627f21599
 
-
-
 mkdir -p factorbook
 
 wget -P factorbook http://hgdownload.cse.ucsc.edu/goldenpath/hg19/database/factorbookMotifPos.txt.gz
@@ -84,7 +88,6 @@ cat  factorbook/factorbookMotifPos.txt \
 # Hi-C data from Rao et al 2014 Cell
 #=======================================================================
 mkdir -p Rao2014
-
 
 RAO_CELLS="GM12878_primary+replicate HMEC HUVEC HeLa IMR90 K562 KBM7 NHEK"
 
@@ -106,7 +109,6 @@ for CELL in ${RAO_CELLS} ; do
     #   | sed -e 's/^/chr/' \
     #   > Rao2014/GSE63525_${CELL}_Arrowhead_domainlist.txt.bed 
 done
-
 
 #=======================================================================
 # ChIA-pet data from Tang et al 2015 Cell
@@ -139,10 +141,13 @@ mkdir -p ENCODE
 
 
 # download files.txt with download URLs to all files:
-wget -O ENCODE/files.txt https://www.encodeproject.org/batch_download/type%3DExperiment%26assay_title%3DChIP-seq%26assembly%3Dhg19%26target.investigated_as%3Dtranscription%2Bfactor%26files.file_type%3DbigWig
+# wget -O ENCODE/files.txt https://www.encodeproject.org/batch_download/type%3DExperiment%26assay_title%3DChIP-seq%26assembly%3Dhg19%26target.investigated_as%3Dtranscription%2Bfactor%26files.file_type%3DbigWig
+wget -O ENCODE/files.txt https://www.encodeproject.org/batch_download/type%3DExperiment%26assay_title%3DChIP-seq%26assembly%3Dhg19%26target.investigated_as%3Dtranscription%2Bfactor%26files.file_type%3DbigWig%26files.file_type%3Dbam
+
 
 # download report.tsv files
-wget -O ENCODE/report.tsv "https://www.encodeproject.org/report.tsv?type=Experiment&assay_title=ChIP-seq&assembly=hg19&target.investigated_as=transcription+factor&files.file_type=bigWig"
+# wget -O ENCODE/report.tsv "https://www.encodeproject.org/report.tsv?type=Experiment&assay_title=ChIP-seq&assembly=hg19&target.investigated_as=transcription+factor&files.file_type=bigWig"
+wget -O ENCODE/report.tsv "https://www.encodeproject.org/report.tsv?type=Experiment&assay_title=ChIP-seq&assembly=hg19&target.investigated_as=transcription+factor&files.file_type=bigWig&files.file_type=bam"
 
 # download only metadata.tsv file (with first link in files.txt)
 head -n 1 ENCODE/files.txt \
@@ -158,8 +163,67 @@ cd ENCODE/Experiments
 xargs -n 1 curl -O -L < ../URLs.flt.txt
 xargs -P 10 -n 1 curl -O -L < ../URLs.fltOuttype.txt
 xargs -n 1 curl -O -L < ../URLs.fcDF.txt
+xargs -P 10 -n 1 curl -O -L < ../URLs.fltBam.txt
 
 cd ../..
+
+#=======================================================================
+# Run Q pipeline on BAM files
+#=======================================================================
+
+function Qpipe {
+  
+  LINK=$1
+
+  # get bam file path from url
+  BAM=ENCODE/Experiments/$(basename $LINK)
+
+    echo INFO: Working on file $BAM
+
+  # iterate over each chromosome
+  cut -f 1 UCSC/hg19.chrom.sizes.real_chroms  | while read CHR ; do
+    
+    echo INFO: Working on $CHR
+    
+    # get qfrag and shifted reads coverage
+    ./${Q} --treatment-sample ${BAM} --out-prefix ${BAM} -w ${CHR}
+    
+  done
+  
+  # combine files from all chromosomes
+  for OUT_TYPE in "qfrags" "shifted-reads" ; do
+    
+    echo "INFO output type:" $OUT_TYPE 
+
+    # combine all chromosome files
+    cat ${BAM}-${OUT_TYPE}-*-chip.bed > ${BAM}-${OUT_TYPE}_allChr_chip.bed
+    
+    # get bedgraph file
+    ${BEDTOOLS} genomecov -bg \
+      -i ${BAM}-${OUT_TYPE}_allChr_chip.bed \
+      -g UCSC/hg19.chrom.sizes.real_chroms \
+      > ${BAM}-${OUT_TYPE}_allChr_chip.bed.bedGraph
+  
+    # is not case-sensitive sorted at line 2906741.  Please use "sort -k1,1 -k2,2n" with LC_COLLATE=C,  or bedSort and try again.
+    export LC_COLLATE=C
+    cat ${BAM}-${OUT_TYPE}_allChr_chip.bed.bedGraph \
+      | sort -k1,1 -k2,2n \
+      > ${BAM}-${OUT_TYPE}_allChr_chip.bed.sorted.bedGraph
+    
+    # convert bedGraph into BigWig format
+    ${BIN}/bedGraphToBigWig \
+      ${BAM}-${OUT_TYPE}_allChr_chip.bed.sorted.bedGraph \
+      UCSC/hg19.chrom.sizes.real_chroms \
+      ${BAM}-${OUT_TYPE}_allChr_chip.bed.sorted.bedGraph.bw
+
+  done  # OUT_TYPE
+}
+export -f Qpipe
+
+# iterate over all BAM files
+# cat ENCODE/URLs.fltBam.txt | parallel mv {} destdir
+cat ENCODE/URLs.fltBam.txt | parallel -j 20 Qpipe
+
 
 
 #=======================================================================
@@ -224,10 +288,6 @@ wget -P ENCODE/bam http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEn
 wget -P ENCODE/bam http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1.bam
 wget -P ENCODE/bam http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1.bam.bai
 
-
-# get chromosome sizes
-wget -P UCSC http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/hg19.chrom.sizes
-head -n 24 UCSC/hg19.chrom.sizes > UCSC/hg19.chrom.sizes.real_chroms
 
 BAM_FILES="
 ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam

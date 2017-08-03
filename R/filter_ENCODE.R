@@ -69,12 +69,13 @@ meta <- meta_raw %>%
   mutate(size = Size / 1024^2) %>% 
   mutate(date = ymd(`Experiment date released`)) %>% 
   select(`File accession`, TF, `Output type`, 
-         rep, file_nrep, exp_nrep, Lab, size, date, everything()) 
+         rep, file_nrep, exp_nrep, `File format`, Lab, size, date, everything()) 
 
 
 # filter for GM12878
 # filter for hg19
 df <- meta %>%
+  filter(`File format` == "bigWig") %>% 
   filter(Assembly == "hg19") %>% 
   filter(`Biosample term name` == "GM12878")
 
@@ -227,7 +228,38 @@ fcDF %>%
   select(`File accession`:Lab, -rep, filePath) %>%
   write_tsv(path = file.path("data", "ENCODE", "metadata.fcDF.tsv"))
 
+#-------------------------------------------------------------------------------
+# get BAM files
+#-------------------------------------------------------------------------------
 
+dfBam <- meta %>%
+  filter(`File format` == "bam") %>% 
+  filter(`Output type` == "alignments") %>% 
+  filter(Assembly == "hg19") %>% 
+  filter(`Biosample term name` == "GM12878")
+
+# filter for "signal" as output with combined replicate (is NA here) and only GM12878 cell line
+
+fltBam <- dfBam %>% 
+  filter(`Biosample term name` == "GM12878") %>%
+  distinct(TF, .keep_all = TRUE) %>%
+  mutate(usedTF = TF %in% useTFs) %>%
+  arrange(desc(usedTF)) %>%
+  mutate(filePath = file.path("data", "ENCODE", "Experiments", basename(`File download URL`)))
+
+
+# Output filtered URL list and metadata table -----------------------------
+fltBam %>% 
+  select(`File download URL`) %>%
+  write_tsv(
+    path = file.path("data", "ENCODE", "URLs.fltBam.txt"),
+    col_names = FALSE)
+
+fltBam %>%
+  select(-rep) %>%
+  write_tsv(path = file.path("data", "ENCODE", "metadata.fltBam.tsv"))
+
+#===============================================================================
 
 # sDF <- df %>% 
 #   filter(`Output type` %in% c("signal")) %>%
