@@ -18,7 +18,7 @@ require(BiocParallel) # for parallelisation
 require(biobroom)     # to make BioC classes tidy
 require(grid)         # for textGrob
 require(magrittr)     # for "tee" pipe %T>% 
-
+# 
 #-----------------------------------------------------------------------
 # Options for parallel computation
 # use all available cores but generate random number streams on each worker
@@ -108,7 +108,7 @@ meta <- read_tsv(metaFile,
 meta <- meta %>% 
   mutate(name = TF) %>%
   mutate(filePath = str_c(filePath, "-qfrags_allChr_chip.bed.sorted.bedGraph.bw")) %>% 
-  filter(file.exists(filePath)) %>% 
+  # filter(file.exists(filePath)) %>% 
   select(TF, name, filePath, everything())
 
 
@@ -254,6 +254,11 @@ df <- df %>%
 
 save(df, file = paste0(outPrefix, ".df.Rdata"))  
 # load(paste0(outPrefix, ".df.Rdata"))
+
+# # remove all but 3 TF columns
+# rmNames <- paste0("cor_", meta$name[4:nrow(meta)])
+# df <- df %>% 
+#   select(-match(rmNames, names(.)))
 
 # make a tidy DF
 tidyDF <- df %>% 
