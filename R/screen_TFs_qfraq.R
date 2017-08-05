@@ -111,6 +111,7 @@ meta <- meta %>%
   # filter(file.exists(filePath)) %>% 
   select(TF, name, filePath, everything())
 
+# meta <- meta[1:3, ]
 
 # Select motifs and parse input data -----------------------------------
 if (!GI_LOCAL) {
@@ -257,7 +258,7 @@ save(df, file = paste0(outPrefix, ".df.Rdata"))
 
 # # remove all but 3 TF columns
 # rmNames <- paste0("cor_", meta$name[4:nrow(meta)])
-# df <- df %>% 
+# df <- df %>%
 #   select(-match(rmNames, names(.)))
 
 # make a tidy DF
@@ -301,7 +302,60 @@ useTF <- meta$name
 # test <- df[testCases,]
 
 # split dataset in randomly in K equal sized parts
-fold <- sample(cut(seq(1, nrow(df)), breaks = K, labels = FALSE))
+# fold <- sample(cut(seq(1, nrow(df)), breaks = K, labels = FALSE))
+
+# ------------------------------------------------------------------------------
+# New tidy approach :)
+# ------------------------------------------------------------------------------
+
+design <- loop ~ dist + strandOrientation + score_min + cor
+
+grp <- tidyDF %>% 
+  select(-starts_with("Loop_"), -score_1, -score_2) %>% 
+  filter(name %in% useTF) %>% 
+  group_by(name)
+
+# Make k-fold cros-validation by splitting data for each gorup (TF)
+cv <- grp %>% 
+  do(crossv_kfold(data = ., k = K)) 
+
+#' fitts a logit model to training data and returns prediction on test data
+fitter <- function(training_data, testing_data) {
+  glm(
+    loop ~ dist + strandOrientation + score_min + cor, 
+    family = binomial(link = 'logit'),
+    data = training_data
+  ) %>% 
+    predict(object = ., newdata = testing_data, type = "response")
+}
+
+# apply traingin and prediction to data sets
+cvDF <- cv %>% 
+  mutate(
+    pred = map2(train, test, fitter),
+    label = map(test, function(df) as_tibble(df)[["loop"]])
+  ) %>% 
+  select(-train, -test) %>% 
+  mutate(fold = parse_integer(.id))
+
+save(cvDF, file = paste0(outPrefix, ".cvDF.Rdata"))  
+# load(paste0(outPrefix, ".cvDF.Rdata"))
+
+#-------------------------------------------------------------------------------
+# Analyse performace 
+#-------------------------------------------------------------------------------
+
+posDF <- cvDF %>% 
+  mutate(
+    n_pos = map_dbl(label, function(l) sum(l == "Loop", na.rm = TRUE))
+  )
+
+
+#====================
+#====================
+#====================
+
+
 
 # tidy prediction --------------------------------------------------
 byTF <- tidyDF %>%
@@ -311,9 +365,61 @@ byTF <- tidyDF %>%
   group_by(name) %>% 
   nest()
 
+
 save(byTF, file = paste0(outPrefix, ".byTF_TMP.Rdata"))  
 # load(paste0(outPrefix, ".byTF_TMP.Rdata"))
 
+
+#' Add prediciton to a data set using a glm model and design
+#' 
+add_pred <- function(df, design = loop ~ dist + strandOrientation + score_min + cor)){
+  
+  folds <- unique(df$fold)
+  
+  cvDF <- tibble(
+    folds = folds,
+    df = list(df)
+  )
+  
+  cvDF <- cvDF %>% 
+    mutate(
+      train = map2(df, folds, function(d, k) filter(d, fold != k)),
+      test = map2(df, folds, function(d, k) filter(d, fold == k))
+    ) %>% 
+    mutate(
+      pred = map2(train, test, function(trainDF, testDF){
+        predict(
+          object = glm(
+            design, 
+            family = binomial(link = 'logit'), 
+            data = trainDF),
+          newdata = testDF,
+          type = "response")
+      })
+    )
+  
+  model <- map(folds, function(k) {
+    glm(
+      design, 
+      family = binomial(link = 'logit'), 
+      data = subset(df, fold != k)
+    )
+  })
+  
+  cvDF <- cvDF %>% 
+    mutate(
+      id = map(test, "id"),
+      idpred = map2(id, pred, tibble)
+    ) %>% 
+    select(idpred)
+    
+  
+  # add prediction to df
+  cvDF <- cvDF %>% 
+    mutate(
+     
+    )    
+}
 
 singleTF_model <- function(df, fold_idx = 1) {
   
@@ -332,6 +438,21 @@ add_predict_fold <- function(df, model, fold_idx = 1) {
   return(df)
 }
 
+add_only_predict_fold <- function(df, fold_idx = 1) {
+
+  model <- glm(
+    loop ~ dist + strandOrientation + score_min + cor, 
+    family = binomial(link = 'logit'), 
+    data = subset(df, fold != fold_idx)
+  )  
+  
+  df[df$fold == fold_idx, "pred"] <- predict(
+    model, 
+    newdata = subset(df, fold == fold_idx), 
+    type = "response")
+  return(df)
+}
+
 
 # m <- singleTF_model(byTF$data[[1]], 2)
 # models <- map(byTF$data, singleTF_model)
@@ -340,14 +461,14 @@ for (k in 1:K) {
   
   message("INFO: k = ", k)
   
-  byTF <- byTF %>%
-    mutate(
-      !!paste0("model_", k) := map(byTF$data, singleTF_model, fold_idx = k)
-    )
+  # byTF <- byTF %>%
+  #   mutate(
+  #     !!paste0("model_", k) := map(byTF$data, singleTF_model, fold_idx = k)
+  #   )
   
   byTF <- byTF %>% 
     mutate(
-      data = map2(.x = data, .y = .[[paste0("model_", k)]], .f = add_predict_fold, fold_idx = k)
+      data = map(data, .f = add_only_predict_fold, fold_idx = k)
     )
 }
 
