@@ -18,7 +18,10 @@ require(BiocParallel) # for parallelisation
 require(biobroom)     # to make BioC classes tidy
 require(grid)         # for textGrob
 require(magrittr)     # for "tee" pipe %T>% 
-# 
+require(rsample)
+# require(recipes)
+require(pryr) # for object_size()
+
 #-----------------------------------------------------------------------
 # Options for parallel computation
 # use all available cores but generate random number streams on each worker
@@ -256,10 +259,10 @@ df <- df %>%
 save(df, file = paste0(outPrefix, ".df.Rdata"))  
 # load(paste0(outPrefix, ".df.Rdata"))
 
-# # remove all but 3 TF columns
-# rmNames <- paste0("cor_", meta$name[4:nrow(meta)])
-# df <- df %>%
-#   select(-match(rmNames, names(.)))
+# remove all but 3 TF columns
+rmNames <- paste0("cor_", meta$name[4:nrow(meta)])
+df <- df %>%
+  select(-match(rmNames, names(.)))
 
 # make a tidy DF
 tidyDF <- df %>% 
@@ -292,17 +295,190 @@ ggsave(p, file = paste0(outPrefix, ".cor.by_TF_and_loop.boxplot.pdf"), w = 28, h
 
 useTF <- meta$name
 
-# filter for a subset of TFS
-# useTF <- useTF[1:3]
+#filter for a subset of TFS
+useTF <- useTF[1:3]
 
-# dived in training and test set by taking 9/10 for training and 1/10 for testing
-# testCases <- sample.int(nrow(df), size = round(nrow(df)/10))
-# testCasesVec <- ifelse(1:nrow(df) %in% testCases, "train", "test")
-# train <- df[-testCases,]
-# test <- df[testCases,]
 
-# split dataset in randomly in K equal sized parts
-# fold <- sample(cut(seq(1, nrow(df)), breaks = K, labels = FALSE))
+# ------------------------------------------------------------------------------
+# cross validation in a tidy approach 
+# ------------------------------------------------------------------------------
+
+# k fold cross validation with 1 repeats
+set.seed(3579)
+
+dfCV <- df %>% 
+  vfold_cv(V = K, repeats = 1)
+
+# get design formula for each TF
+designDF <- tibble(
+  name = useTF,
+  design = map(useTF, ~as.formula(paste0("loop ~ dist + strandOrientation + score_min + cor_", .x)) )
+)
+
+#' Get prediciton result on test subset
+#' Source: https://github.com/topepo/rsample/blob/master/vignettes/Working_with_rsets.Rmd
+#' 
+#' @param splits an individual \code{rsplit} object.
+#' 
+holdout_results <- function(splits, formula, dependant_var = "loop", ...) {
+  
+  # Fit the model to the training data set
+  mod <- glm(formula = formula, 
+             data = analysis(splits), 
+             family = binomial(),
+             model = FALSE,  
+             x = FALSE,
+             ...)
+  
+  # `augment` will save the predictions with the holdout data set
+  res <- broom::augment(
+      mod, 
+      newdata = assessment(splits), 
+      type.predict = "response"
+    ) %>% 
+    as_tibble() %>% 
+    select(label = one_of(dependant_var), pred = ".fitted")
+  
+
+  # Return the assessment data set with the additional columns
+  return(res)
+}
+
+# expand data.frame to have all combinations of model and split
+dfCV <- dfCV %>% 
+  expand(name = useTF, id) %>% 
+  left_join(dfCV, by = "id") %>% 
+  # add design formular for each TF
+  left_join(designDF, by = "name")
+
+
+# fit model and add predictions for each combination of model and split
+dfCV <- dfCV %>% 
+  mutate(
+    result = map2(splits, design, holdout_results)
+  )
+
+# extract only the needed columns
+evalDF <- dfCV %>% 
+  mutate(
+    pred = map(result, "pred"),
+    label = map(result, "label")
+  ) %>% 
+  mutate(
+    fold = parse_integer(str_replace(id, "Fold", ""))
+  ) %>% 
+  select(name, fold, pred, label)
+
+# save evalDF
+save(evalDF, file = paste0(outPrefix, ".evalDF.Rdata"))  
+# load(paste0(outPrefix, ".evalDF.Rdata"))
+
+
+# get number and percent of positives
+posDF <- evalDF %>% 
+  mutate(
+    n_pos = map_dbl(label, function(l) sum(l == "Loop", na.rm = TRUE)),
+    percent_pos = n_pos / map_dbl(label, length) * 100
+  )
+
+
+# get AUC of ROC and PRC curves for all 
+curves <- evalmod(
+  scores = evalDF$pred,
+  labels = evalDF$label,
+  modnames = evalDF$name,
+  dsids = evalDF$fold,
+  posclass = levels(evalDF$label[[1]])[2],
+  x_bins = 100)
+
+
+# get data.frame with auc values
+aucDF <- as_tibble(auc(curves))
+
+# get ranked modle names
+ranked_models <- aucDF %>% 
+  filter(curvetypes == "PRC") %>% 
+  group_by(modnames) %>% 
+  summarize(
+    auc_mean = mean(aucs, na.rm = TRUE)
+  ) %>% 
+  arrange(auc_mean) %>% 
+  select(modnames) %>% 
+  unlist()
+
+# order aucDF by ranks
+aucDF <- aucDF %>% 
+  mutate(
+    modnames = factor(modnames, ranked_models)
+  ) %>% 
+  arrange(desc(modnames))
+
+# get data from fro ggplot
+# curveDF <- precrec::fortify(curves)
+
+# build color vector with TFs as names
+# TF_models <- ranked_models
+COL_TF <- COL_TF[seq(1, length(ranked_models))]
+names(COL_TF) <- ranked_models
+
+###################
+# TODO Continue here!
+###################
+
+#-------------------------------------------------------------------------------
+# barplot of AUCs of ROC and PRC
+#-------------------------------------------------------------------------------
+p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = modnames)) +
+  geom_bar(stat = "identity", color = "black") +
+  geom_text(aes(label = round(aucs, 2)), size = 3, hjust = 1, angle = 90) +
+  facet_grid(curvetypes ~ ., scales = "free") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "none") +
+  scale_fill_manual(values = COL_TF) +
+  labs(x = "Models", y = "AUC")
+# p
+ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot.pdf"), w = 14, h = 7)
+
+# get ROC plots
+aucDFroc <- aucDF %>% 
+  filter(curvetypes == "ROC")
+
+g <- autoplot(curves, "ROC") + 
+  # coord_cartesian(expand = FALSE) + 
+  scale_color_manual(values = COL_TF,
+                     labels = paste0(
+                       aucDFroc$modnames, 
+                       ": AUC=", 
+                       signif(aucDFroc$aucs,3)
+                     ),
+                     guide = guide_legend(
+                       override.aes = list(size = 2),
+                       reverse = TRUE)
+  ) + 
+  theme(legend.position = c(.75,.4))
+
+# g
+ggsave(g, file= paste0(outPrefix, ".ROC.pdf"), w = 5, h = 5)
+
+# get PRC plots
+aucDFprc <- aucDF %>% 
+  filter(curvetypes == "PRC")
+
+g <- autoplot(curves, "PRC", size = 4) +
+  scale_color_manual(values = COL_TF,
+                     labels = paste0(
+                       aucDFprc$modnames, 
+                       ": AUC=", 
+                       signif(aucDFprc$aucs,3)),
+                     guide = guide_legend(override.aes = list(size = 2),
+                                          reverse = TRUE)) +
+  # theme(legend.position=c(.75,.6))
+  theme(legend.position = "none")
+# g
+ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
+#===============================================================================
+#===============================================================================
+
 
 # ------------------------------------------------------------------------------
 # New tidy approach :)
@@ -311,44 +487,150 @@ useTF <- meta$name
 design <- loop ~ dist + strandOrientation + score_min + cor
 
 grp <- tidyDF %>% 
-  select(-starts_with("Loop_"), -score_1, -score_2) %>% 
-  filter(name %in% useTF) %>% 
-  group_by(name)
+  select(-starts_with("Loop_"), -score_1, -score_2) %>% # remove unused columns
+  filter(name %in% useTF) %>% # filter for only TFs in useTF
+  group_by(name)              # group by TF
 
 # Make k-fold cros-validation by splitting data for each gorup (TF)
 cv <- grp %>% 
   do(crossv_kfold(data = ., k = K)) 
 
-#' fitts a logit model to training data and returns prediction on test data
-fitter <- function(training_data, testing_data) {
+
+#' fitts a logit model to training data and returns prediction response vector
+#' on test data
+#' 
+#' @param training_data data set with training data.
+#' @param design a formular object defining the prediction design and variables.
+fitter <- function(training_data, design) {
   glm(
-    loop ~ dist + strandOrientation + score_min + cor, 
+    design, 
     family = binomial(link = 'logit'),
-    data = training_data
-  ) %>% 
-    predict(object = ., newdata = testing_data, type = "response")
+    data = training_data,
+    model = FALSE, 
+    x = FALSE
+  ) 
 }
+
+
+#' fitts a logit model to training data and returns prediction response vector
+#' on test data
+#' 
+#' @param training_data data set with training data.
+#' @param test_data data set with training data.
+#' @param design a formular object defining the prediction design and variables.
+fitter_augment <- function(training_data, test_data, design) {
+  glm(
+    design, 
+    family = binomial(link = 'logit'),
+    data = training_data,
+    model = FALSE, 
+    x = FALSE
+  ) %>% 
+  broom::augment(newdata = training_data, type.predict = "response") %>% 
+  as_tibble()
+}
+
+
+#' fitts a logit model to training data and returns model fit
+#' 
+#' @param training_data data set with training data.
+#' @param design a formular object defining the prediction design and variables.
+fitter <- function(training_data, design) {
+  glm(
+    design, 
+    family = binomial(link = 'logit'),
+    data = training_data,
+    model = FALSE, 
+    x = FALSE
+  ) 
+}
+
+# %>% 
+#   predict(object = ., newdata = testing_data, type = "response")
+
+require(biglm)
+bm <- biglm::bigglm(design, data = cv$train[[1]], family = binomial(link = 'logit'))
 
 # apply traingin and prediction to data sets
 cvDF <- cv %>% 
+  # mutate(
+  #   model = map(train, fitter, design = design)
+  # ) %>% 
   mutate(
-    pred = map2(train, test, fitter),
-    label = map(test, function(df) as_tibble(df)[["loop"]])
-  ) %>% 
-  select(-train, -test) %>% 
-  mutate(fold = parse_integer(.id))
+    aug = map2(train, test, fitter_augment, design = design)
+  )
+# ,
+#     pred = map2(model, test, prediction, type = "response"),
+#     label = map(test, function(df) as_tibble(df)[["loop"]])
+#   ) %>% 
+#   select(-train, -test) %>% 
+#   mutate(fold = parse_integer(.id))
 
+# pryr::object_size(tidyDF)
 save(cvDF, file = paste0(outPrefix, ".cvDF.Rdata"))  
 # load(paste0(outPrefix, ".cvDF.Rdata"))
 
 #-------------------------------------------------------------------------------
-# Analyse performace 
+# Analyse Model 
 #-------------------------------------------------------------------------------
 
-posDF <- cvDF %>% 
+cvDF <- cvDF %>% 
   mutate(
     n_pos = map_dbl(label, function(l) sum(l == "Loop", na.rm = TRUE))
+  ) %>% 
+  mutate(tidy_model = map(model, broom::tidy)) %>% 
+  mutate(glance = map(model, broom::glance))
+
+
+# add model quality and mdoel as tidy DF
+byTFfold <- byTFfold %>% 
+  mutate(tidy_model = map(model, broom::tidy)) %>% 
+  mutate(glance = map(model, broom::glance))
+
+save(byTFfold, file = paste0(outPrefix, ".byTFfold.Rdata"))
+
+# Analyse Model parameters ----------------------------------------------------
+
+# get DF with model quality
+modelQualDF <- byTFfold %>% 
+  unnest(glance, .drop = TRUE)
+write_tsv(modelQualDF, paste0(outPrefix, ".modelQualDF.tsv"))
+
+# get tidy model DF
+modelDF <- byTFfold %>% 
+  unnest(tidy_model, .drop = TRUE)
+
+write_tsv(modelDF, paste0(outPrefix, ".modelDF.tsv"))
+
+# add meta data
+modelDF <- modelDF %>% 
+  left_join(meta, by = "name")
+
+paramByTF <- modelDF %>% 
+  group_by(name, term) %>% 
+  summarize(
+    n = n(),
+    estimate_mean = mean(estimate),
+    estimate_sd = sd(estimate)
   )
+
+p <- ggplot(paramByTF, aes(x = name, y = estimate_mean, fill = name)) + 
+  geom_bar(stat = "identity", position = "dodge") + 
+  geom_errorbar(aes(
+    ymin = estimate_mean - estimate_sd, 
+    ymax = estimate_mean + estimate_sd), width = 0.25) +
+  # geom_text(aes(label = round(estimate, 2)), vjust = "inward") + 
+  # facet_grid(param ~ ., scales = "free_y") + 
+  geom_text(aes(label = round(estimate_mean, 2)), hjust = "inward") + 
+  facet_grid(. ~ term , scales = "free_x") + 
+  coord_flip() +
+  labs(y = "Parameter estimate", x = "Model") + 
+  theme_bw() + scale_fill_manual(values = COL_TF) + 
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(p, file = paste0(outPrefix, ".paramter.barplot.pdf"), w = 6, h = 12)
+
+
 
 
 #====================
