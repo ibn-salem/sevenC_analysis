@@ -22,6 +22,8 @@ require(rsample)
 # require(recipes)
 require(pryr) # for object_size()
 
+source("R/chromloop.functions.R")
+
 #-----------------------------------------------------------------------
 # Options for parallel computation
 # use all available cores but generate random number streams on each worker
@@ -315,35 +317,6 @@ designDF <- tibble(
   design = map(useTF, ~as.formula(paste0("loop ~ dist + strandOrientation + score_min + cor_", .x)) )
 )
 
-#' Get prediciton result on test subset
-#' Source: https://github.com/topepo/rsample/blob/master/vignettes/Working_with_rsets.Rmd
-#' 
-#' @param splits an individual \code{rsplit} object.
-#' 
-holdout_results <- function(splits, formula, dependant_var = "loop", ...) {
-  
-  # Fit the model to the training data set
-  mod <- glm(formula = formula, 
-             data = analysis(splits), 
-             family = binomial(),
-             model = FALSE,  
-             x = FALSE,
-             ...)
-  
-  # `augment` will save the predictions with the holdout data set
-  res <- broom::augment(
-      mod, 
-      newdata = assessment(splits), 
-      type.predict = "response"
-    ) %>% 
-    as_tibble() %>% 
-    select(label = one_of(dependant_var), pred = ".fitted")
-  
-
-  # Return the assessment data set with the additional columns
-  return(res)
-}
-
 # expand data.frame to have all combinations of model and split
 dfCV <- dfCV %>% 
   expand(name = useTF, id) %>% 
@@ -352,18 +325,37 @@ dfCV <- dfCV %>%
   left_join(designDF, by = "name")
 
 
-# fit model and add predictions for each combination of model and split
+# fit model on training part and predict on test split
+dfCV <- dfCV %>% 
+  # fit model and save estimates in tidy format
+  mutate(
+    tidy_model = map2(splits, design, tidy_fitter)
+  ) 
+
+save(dfCV, file = paste0(outPrefix, "dfCV_tmp.Rdata"))
+# load(paste0(outPrefix, "dfCV_tmp.Rdata"))
+
+# add prediction
 dfCV <- dfCV %>% 
   mutate(
-    result = map2(splits, design, holdout_results)
+    pred = pmap(
+      list(
+        map(splits, assessment), 
+        design, 
+        map(tidy_model, "estimate")
+        ), 
+      pred_logit
+      )
   )
+
+dfCV <- dfCV %>% 
+  mutate(
+    label = map(map(splits, assessment), "loop")
+  )
+
 
 # extract only the needed columns
 evalDF <- dfCV %>% 
-  mutate(
-    pred = map(result, "pred"),
-    label = map(result, "label")
-  ) %>% 
   mutate(
     fold = parse_integer(str_replace(id, "Fold", ""))
   ) %>% 
@@ -402,16 +394,14 @@ ranked_models <- aucDF %>%
   summarize(
     auc_mean = mean(aucs, na.rm = TRUE)
   ) %>% 
-  arrange(auc_mean) %>% 
+  arrange(desc(auc_mean)) %>% 
   select(modnames) %>% 
   unlist()
 
 # order aucDF by ranks
 aucDF <- aucDF %>% 
-  mutate(
-    modnames = factor(modnames, ranked_models)
-  ) %>% 
-  arrange(desc(modnames))
+  mutate(modnames = factor(modnames, ranked_models)) %>% 
+  arrange(modnames)
 
 # get data from fro ggplot
 # curveDF <- precrec::fortify(curves)
@@ -421,22 +411,29 @@ aucDF <- aucDF %>%
 COL_TF <- COL_TF[seq(1, length(ranked_models))]
 names(COL_TF) <- ranked_models
 
-###################
-# TODO Continue here!
-###################
+aucDFmed <- aucDF %>%
+  group_by(modnames, curvetypes) %>% 
+  summarize(
+    aucs_median = median(aucs, na.rm = TRUE),
+    aucs_mean = mean(aucs, na.rm = TRUE),
+    aucs_sd = sd(aucs, na.rm = TRUE)
+  )
 
 #-------------------------------------------------------------------------------
 # barplot of AUCs of ROC and PRC
 #-------------------------------------------------------------------------------
-p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = modnames)) +
+p <- ggplot(aucDFmed, aes(x = modnames, y = aucs_mean, fill = modnames)) +
   geom_bar(stat = "identity", color = "black") +
-  geom_text(aes(label = round(aucs, 2)), size = 3, hjust = 1, angle = 90) +
+  geom_errorbar(aes(ymin = aucs_mean - aucs_sd, ymax = aucs_mean + aucs_sd),
+                width = .25) + 
+  geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), size = 3, hjust = 1, angle = 90) +
   facet_grid(curvetypes ~ ., scales = "free") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "none") +
   scale_fill_manual(values = COL_TF) +
   labs(x = "Models", y = "AUC")
-# p
+p
+
 ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot.pdf"), w = 14, h = 7)
 
 # get ROC plots
@@ -636,405 +633,4 @@ ggsave(p, file = paste0(outPrefix, ".paramter.barplot.pdf"), w = 6, h = 12)
 #====================
 #====================
 #====================
-
-
-
-# tidy prediction --------------------------------------------------
-byTF <- tidyDF %>%
-  filter(name != "across_TFs") %>% 
-  filter(name %in% useTF) %>% 
-  mutate(fold = rep(fold, length(useTF))) %>% 
-  group_by(name) %>% 
-  nest()
-
-
-save(byTF, file = paste0(outPrefix, ".byTF_TMP.Rdata"))  
-# load(paste0(outPrefix, ".byTF_TMP.Rdata"))
-
-
-#' Add prediciton to a data set using a glm model and design
-#' 
-add_pred <- function(df, design = loop ~ dist + strandOrientation + score_min + cor)){
-  
-  folds <- unique(df$fold)
-  
-  cvDF <- tibble(
-    folds = folds,
-    df = list(df)
-  )
-  
-  cvDF <- cvDF %>% 
-    mutate(
-      train = map2(df, folds, function(d, k) filter(d, fold != k)),
-      test = map2(df, folds, function(d, k) filter(d, fold == k))
-    ) %>% 
-    mutate(
-      pred = map2(train, test, function(trainDF, testDF){
-        predict(
-          object = glm(
-            design, 
-            family = binomial(link = 'logit'), 
-            data = trainDF),
-          newdata = testDF,
-          type = "response")
-      })
-    )
-  
-  model <- map(folds, function(k) {
-    glm(
-      design, 
-      family = binomial(link = 'logit'), 
-      data = subset(df, fold != k)
-    )
-  })
-  
-  cvDF <- cvDF %>% 
-    mutate(
-      id = map(test, "id"),
-      idpred = map2(id, pred, tibble)
-    ) %>% 
-    select(idpred)
-    
-  
-  # add prediction to df
-  cvDF <- cvDF %>% 
-    mutate(
-     
-    )    
-}
-
-singleTF_model <- function(df, fold_idx = 1) {
-  
-  glm(
-    loop ~ dist + strandOrientation + score_min + cor, 
-    family = binomial(link = 'logit'), 
-    data = subset(df, fold != fold_idx)
-  )  
-}
-
-add_predict_fold <- function(df, model, fold_idx = 1) {
-  df[df$fold == fold_idx, "pred"] <- predict(
-    model, 
-    newdata = subset(df, fold == fold_idx), 
-    type = "response")
-  return(df)
-}
-
-add_only_predict_fold <- function(df, fold_idx = 1) {
-
-  model <- glm(
-    loop ~ dist + strandOrientation + score_min + cor, 
-    family = binomial(link = 'logit'), 
-    data = subset(df, fold != fold_idx)
-  )  
-  
-  df[df$fold == fold_idx, "pred"] <- predict(
-    model, 
-    newdata = subset(df, fold == fold_idx), 
-    type = "response")
-  return(df)
-}
-
-
-# m <- singleTF_model(byTF$data[[1]], 2)
-# models <- map(byTF$data, singleTF_model)
-
-for (k in 1:K) {
-  
-  message("INFO: k = ", k)
-  
-  # byTF <- byTF %>%
-  #   mutate(
-  #     !!paste0("model_", k) := map(byTF$data, singleTF_model, fold_idx = k)
-  #   )
-  
-  byTF <- byTF %>% 
-    mutate(
-      data = map(data, .f = add_only_predict_fold, fold_idx = k)
-    )
-}
-
-# save(byTF, file = paste0(outPrefix, ".byTF_TESTING.Rdata"))
-save(byTF, file = paste0(outPrefix, ".byTF.Rdata"))
-# load(paste0(outPrefix, ".byTF.Rdata"))
-#-------------------------------------------------------------------------------
-# unpack to by TF and fold
-#-------------------------------------------------------------------------------
-
-# gather models by fold
-byTFfold <- byTF %>%
-  gather(starts_with("model_"), key = "fold", value = "model") %>% 
-  mutate(
-    fold = parse_integer(str_replace(fold, "model_", "")), 
-    data = map2(data, fold, function(df, k) filter(df, fold == k))
-    )
-
-# add model quality and mdoel as tidy DF
-byTFfold <- byTFfold %>% 
-  mutate(tidy_model = map(model, broom::tidy)) %>% 
-  mutate(glance = map(model, broom::glance))
-  
-save(byTFfold, file = paste0(outPrefix, ".byTFfold.Rdata"))
-
-# Analyse Model parameters ----------------------------------------------------
-
-# get DF with model quality
-modelQualDF <- byTFfold %>% 
-  unnest(glance, .drop = TRUE)
-write_tsv(modelQualDF, paste0(outPrefix, ".modelQualDF.tsv"))
-
-# get tidy model DF
-modelDF <- byTFfold %>% 
-  unnest(tidy_model, .drop = TRUE)
-
-write_tsv(modelDF, paste0(outPrefix, ".modelDF.tsv"))
-
-# add meta data
-modelDF <- modelDF %>% 
-  left_join(meta, by = "name")
-
-paramByTF <- modelDF %>% 
-  group_by(name, term) %>% 
-  summarize(
-    n = n(),
-    estimate_mean = mean(estimate),
-    estimate_sd = sd(estimate)
-  )
-
-p <- ggplot(paramByTF, aes(x = name, y = estimate_mean, fill = name)) + 
-  geom_bar(stat = "identity", position = "dodge") + 
-  geom_errorbar(aes(
-    ymin = estimate_mean - estimate_sd, 
-    ymax = estimate_mean + estimate_sd), width = 0.25) +
-  # geom_text(aes(label = round(estimate, 2)), vjust = "inward") + 
-  # facet_grid(param ~ ., scales = "free_y") + 
-  geom_text(aes(label = round(estimate_mean, 2)), hjust = "inward") + 
-  facet_grid(. ~ term , scales = "free_x") + 
-  coord_flip() +
-  labs(y = "Parameter estimate", x = "Model") + 
-  theme_bw() + scale_fill_manual(values = COL_TF) + 
-  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
-
-ggsave(p, file = paste0(outPrefix, ".paramter.barplot.pdf"), w = 6, h = 12)
-
-#-------------------------------------------------------------------------------
-# Analyse performace 
-#-------------------------------------------------------------------------------
-
-evalDF <- byTFfold %>% 
-  mutate(
-    pred =  map(data, function(df) df[["pred"]]),
-    label =  map(data, function(df) df[["loop"]])
-  ) %>% 
-  select(name, fold, pred, label)
-
-posDF <- evalDF %>% 
-  mutate(
-    n_pos = map_dbl(label, function(l) sum(l == "Loop", na.rm = TRUE))
-  )
-
-# get AUC of ROC and PRC curves for all 
-curves <- evalmod(
-      scores = evalDF$pred,
-      label = evalDF$label,
-      modnames = evalDF$name,
-      dsids = evalDF$fold,
-      calc_avg = TRUE)
-
-# get data.frame with auc values
-aucDF <- as_tibble(auc(curves))
-
-# get ranked modle names
-ranked_models <- aucDF %>% 
-  filter(curvetypes == "PRC") %>% 
-  group_by(modnames) %>% 
-  summarize(
-    auc_mean = mean(aucs, na.rm = TRUE)
-  ) %>% 
-  arrange(auc_mean) %>% 
-  select(modnames) %>% 
-  unlist()
-
-# order aucDF by ranks
-aucDF <- aucDF %>% 
-  mutate(
-    modelnames = factor(modelnames, ranked_models)
-  ) %>% 
-  arrange(desc(modelnames))
-
-# get data from fro ggplot
-curveDF <- precrec::fortify(curves)
-
-# build color vector with TFs as names
-# TF_models <- ranked_models
-COL_TF <- COL_TF[seq(1, length(ranked_models))]
-names(COL_TF) <- ranked_models
-
-#-------------------------------------------------------------------------------
-# barplot of AUCs of ROC and PRC
-#-------------------------------------------------------------------------------
-p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = modnames)) +
-  geom_bar(stat = "identity", color = "black") +
-  geom_text(aes(label = round(aucs, 2)), size = 3, hjust = 1, angle = 90) +
-  facet_grid(curvetypes ~ ., scales = "free") +
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "none") +
-  scale_fill_manual(values = COL_TF) +
-  labs(x = "Models", y = "AUC")
-# p
-ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot.pdf"), w = 14, h = 7)
-
-# get ROC plots
-aucDFroc <- aucDF %>% 
-  filter(curvetypes == "ROC")
-
-g <- autoplot(curves, "ROC") + 
-  # coord_cartesian(expand = FALSE) + 
-  scale_color_manual(values = COL_TF,
-                     labels = paste0(
-                       aucDFroc$modnames, 
-                       ": AUC=", 
-                       signif(aucDFroc$aucs,3)
-                      ),
-                     guide = guide_legend(
-                      override.aes = list(size = 2),
-                      reverse = TRUE)
-                     ) + 
-  theme(legend.position = c(.75,.4))
-
-# g
-ggsave(g, file= paste0(outPrefix, ".ROC.pdf"), w = 5, h = 5)
-
-# get PRC plots
-aucDFprc <- aucDF %>% 
-  filter(curvetypes == "PRC")
-
-g <- autoplot(curves, "PRC", size = 4) +
-  scale_color_manual(values = COL_TF,
-                     labels = paste0(
-                       aucDFprc$modnames, 
-                       ": AUC=", 
-                       signif(aucDFprc$aucs,3)),
-                     guide = guide_legend(override.aes = list(size = 2),
-                                          reverse = TRUE)) +
-  # theme(legend.position=c(.75,.6))
-  theme(legend.position = "none")
-# g
-ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
-
-
-
-autoplot(curves, show_cb = TRUE)
-#==============================================
-# OLD CODE BELLOW
-#==============================================
-
-# model_names <- c(useTF, paste0(useTF, "_DS"), "dist", "all_TF")
-model_names <- useTF
-
-# plot ROC and PRC
-modelData <-  mmdata(
-  # scores = as.list(select(test, one_of(str_c("pred_", model_names)))),
-  scores = map(byTF$data, function(subDF) filter(subDF, fold == 1)[["pred"]]),
-  labels = filter(df, fold == 1)[["loop"]],
-  modnames = model_names,
-  posclass = "Loop"
-)
-
-# get rank of models
-ranked_models <- auc( evalmod(modelData) ) %>% 
-  filter(curvetypes == "PRC") %>% 
-  arrange(aucs) %>% 
-  select(modnames) %>% 
-  unlist()
-
-# build color vector with TFs as names
-# TF_models <- ranked_models
-COL_TF <- COL_TF[seq(1, length(ranked_models))]
-names(COL_TF) <- ranked_models
-
-
-# build model again with ordered modelnames
-modelData <-  mmdata(
-  scores = map(byTF$data, function(subDF) filter(subDF, fold == 1)[["pred"]]),
-  labels = filter(df, fold == 1)[["loop"]],
-  modnames = ranked_models,
-  posclass = "Loop"
-)
-
-# caluclate ROC, PRC, and basic performance scores
-curves <- evalmod(modelData)
-# scores <- evalmod(modelData, mode = "basic")
-
-# get AUC of ROC and PRC
-aucDF <- as_tibble(auc(curves)) %>%
-  left_join(meta, by = c("modnames" = "name")) %>% 
-  mutate(modnames = fct_reorder(modnames, aucs, fun = min)) %T>% 
-  write_tsv(paste0(outPrefix, ".aucDF.tsv"))
-
-COL_TF <- COL_TF[1:length(model_names)]
-names(COL_TF) <- levels(aucDF$modnames)
-
-
-# %>%
-#   mutate(modnames = factor(modnames, ranked_models))
-
-# barplot of AUCs of ROC and PRC
-
-p <- ggplot(aucDF, aes(x = modnames, y = aucs, fill = modnames)) +
-  geom_bar(stat = "identity", color = "black") +
-  geom_text(aes(label = round(aucs, 2)), size = 3, hjust = 1, angle = 90) +
-  facet_grid(curvetypes ~ ., scales = "free") +
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "none") +
-  scale_fill_manual(values = COL_TF) +
-  labs(x = "Models", y = "AUC")
-# p
-ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot.pdf"), w = 14, h = 7)
-
-p <- ggplot(aucDF, aes(x = TF, y = aucs, fill = modnames)) +
-  geom_bar(stat = "identity", color = "black") +
-  geom_text(aes(label = round(aucs, 2)), size = 3, hjust = 1, angle = 90) +
-  facet_grid(curvetypes ~ outType, scales = "free") +
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "none") +
-  scale_fill_manual(values = COL_TF) +
-  labs(x = "Models", y = "AUC")
-# p
-ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot.pdf"), w = 14, h = 7)
-
-
-# get ROC plots
-aucDFroc <- aucDF %>% 
-  filter(curvetypes == "ROC")
-
-g <- autoplot(curves, "ROC") + 
-  # coord_cartesian(expand = FALSE) + 
-  scale_color_manual(values = COL_TF,
-                     labels = paste0(
-                       aucDFroc$modnames, 
-                       ": AUC=", 
-                       signif(aucDFroc$aucs,3)),
-                     guide = guide_legend(override.aes = list(size = 2),
-                                          reverse = TRUE)) + 
-  theme(legend.position=c(.75,.4))
-# g
-ggsave(g, file= paste0(outPrefix, ".ROC.pdf"), w = 5, h = 5)
-
-# get PRC plots
-aucDFprc <- aucDF %>% 
-  filter(curvetypes == "PRC")
-
-g <- autoplot(curves, "PRC", size = 4) +
-  scale_color_manual(values = COL_TF,
-                     labels = paste0(
-                       aucDFprc$modnames, 
-                       ": AUC=", 
-                       signif(aucDFprc$aucs,3)),
-                     guide = guide_legend(override.aes = list(size = 2),
-                                          reverse = TRUE)) +
-  # theme(legend.position=c(.75,.6))
-  theme(legend.position = "none")
-# g
-ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
 
