@@ -1,4 +1,35 @@
 
+
+#' Get prediciton result on test subset
+#' Source: https://github.com/topepo/rsample/blob/master/vignettes/Working_with_rsets.Rmd
+#' 
+#' @param splits an individual \code{rsplit} object.
+#' 
+holdout_results <- function(splits, formula, dependant_var = "loop", ...) {
+  
+  # Fit the model to the training data set
+  mod <- glm(formula = formula, 
+             data = analysis(splits), 
+             family = binomial(),
+             model = FALSE,  
+             x = FALSE,
+             ...)
+  
+  # `augment` will save the predictions with the holdout data set
+  res <- broom::augment(
+    mod, 
+    newdata = assessment(splits), 
+    type.predict = "response"
+  ) %>% 
+    as_tibble() %>% 
+    select(label = one_of(dependant_var), pred = ".fitted")
+  
+  
+  # Return the assessment data set with the additional columns
+  return(res)
+}
+
+
 ################################################################################
 # debugging evalmod() with multiple models and datasets
 library(precrec)
