@@ -990,9 +990,9 @@ ranked_models <- aucDF %>%
 # order aucDF by ranks
 aucDF <- aucDF %>% 
   mutate(
-    modelnames = factor(modelnames, ranked_models)
+    modnames = factor(modnames, ranked_models)
   ) %>% 
-  arrange(desc(modelnames))
+  arrange(desc(modnames))
 
 # get data from fro ggplot
 curveDF <- precrec::fortify(curves)
