@@ -262,9 +262,9 @@ save(df, file = paste0(outPrefix, ".df.Rdata"))
 # load(paste0(outPrefix, ".df.Rdata"))
 
 # remove all but 3 TF columns
-rmNames <- paste0("cor_", meta$name[4:nrow(meta)])
-df <- df %>%
-  select(-match(rmNames, names(.)))
+# rmNames <- paste0("cor_", meta$name[4:nrow(meta)])
+# df <- df %>%
+#   select(-match(rmNames, names(.)))
 
 # make a tidy DF
 tidyDF <- df %>% 
@@ -298,7 +298,7 @@ ggsave(p, file = paste0(outPrefix, ".cor.by_TF_and_loop.boxplot.pdf"), w = 28, h
 useTF <- meta$name
 
 #filter for a subset of TFS
-useTF <- useTF[1:3]
+# useTF <- useTF[1:3]
 
 
 # ------------------------------------------------------------------------------
@@ -331,6 +331,7 @@ dfCV <- dfCV %>%
   mutate(
     tidy_model = map2(splits, design, tidy_fitter)
   ) 
+# startet 19:28 on Aug 17th
 
 save(dfCV, file = paste0(outPrefix, "dfCV_tmp.Rdata"))
 # load(paste0(outPrefix, "dfCV_tmp.Rdata"))
