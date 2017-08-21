@@ -259,12 +259,12 @@ if (TRUE_LOOPS == "HIC_ChIAPET_CaptureC") {
 df <- df %>% 
   select(id, loop, everything()) 
 
-save(df, file = paste0(outPrefix, ".df.Rdata")) 
+# save(df, file = paste0(outPrefix, ".df.Rdata")) 
 write_feather(df, paste0(outPrefix, ".df.feather"))
 # load(paste0(outPrefix, ".df.Rdata"))
 # df <- read_feather(paste0(outPrefix, ".df.feather"))
 
-# remove all but 3 TF columns
+# #remove all but 3 TF columns
 # rmNames <- paste0("cor_", meta$name[4:nrow(meta)])
 # df <- df %>%
 #   select(-match(rmNames, names(.)))
@@ -322,7 +322,7 @@ designDF <- tibble(
 
 # expand data.frame to have all combinations of model and split
 dfCV <- dfCV %>% 
-  expand(name = useTF, id) %>% 
+  tidyr::expand(name = useTF, id) %>% 
   left_join(dfCV, by = "id") %>% 
   # add design formular for each TF
   left_join(designDF, by = "name")
@@ -336,8 +336,22 @@ dfCV <- dfCV %>%
   ) 
 # startet 19:28 on Aug 17th
 
-save(dfCV, file = paste0(outPrefix, "dfCV_tmp.Rdata"))
-# load(paste0(outPrefix, "dfCV_tmp.Rdata"))
+# remove fromular column because it cannot be saved properly.
+dfCV_save <- dfCV %>% 
+  mutate(design_str = map(design, as.character)) %>% 
+  select(-design)
+
+save(dfCV_save, file = paste0(outPrefix, "dfCV_save.Rdata"))
+# load(paste0(outPrefix, "dfCV_save.Rdata"))
+# write_feather(tmpDF, paste0(outPrefix, ".dfCV_tmp.feather"))
+# # tmpDF <- read_feather(paste0(outPrefix, ".dfCV_tmp.feather"))
+
+str2formular <- function(str_vec){
+  as.formula(paste(str_vec[2], str_vec[1], str_vec[3]))
+}
+
+dfCV <- dfCV_save %>% 
+  mutate(design = map(design_str, str2formular))
 
 # add prediction
 dfCV <- dfCV %>% 
