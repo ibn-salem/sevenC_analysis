@@ -21,6 +21,7 @@ require(magrittr)     # for "tee" pipe %T>%
 require(rsample)
 # require(recipes)
 require(pryr) # for object_size()
+require(feather)      # for efficient storing of data.frames
 
 source("R/chromloop.functions.R")
 
@@ -258,8 +259,10 @@ if (TRUE_LOOPS == "HIC_ChIAPET_CaptureC") {
 df <- df %>% 
   select(id, loop, everything()) 
 
-save(df, file = paste0(outPrefix, ".df.Rdata"))  
+save(df, file = paste0(outPrefix, ".df.Rdata")) 
+write_feather(df, paste0(outPrefix, ".df.feather"))
 # load(paste0(outPrefix, ".df.Rdata"))
+# df <- read_feather(paste0(outPrefix, ".df.feather"))
 
 # remove all but 3 TF columns
 # rmNames <- paste0("cor_", meta$name[4:nrow(meta)])
