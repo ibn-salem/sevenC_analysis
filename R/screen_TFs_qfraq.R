@@ -334,7 +334,51 @@ dfCV <- dfCV %>%
   mutate(
     tidy_model = map2(splits, design, tidy_fitter)
   ) 
-# startet 19:28 on Aug 17th
+
+#-------------------------------------------------------------------------------
+# combine models to a single one
+#-------------------------------------------------------------------------------
+
+# take mean/meidan of estimates across TFs and folds
+singleTfModelDF <- dfCV %>% 
+  select(name, id, tidy_model) %>% 
+  unnest(tidy_model) %>% 
+  # rename cor_* terms to only cor
+  mutate(term = str_replace(term, "^cor_.*", "cor")) %>% 
+  group_by(term) %>% 
+  summarize(
+    estimate_mean = mean(estimate, na.rm = TRUE),
+    estimate_median = median(estimate, na.rm = TRUE),
+    estimate_sd = sd(estimate, na.rm = TRUE)
+  )
+
+write_tsv(singleTfModelDF, paste0(outPrefix, "singleTfModelDF.tsv"))
+
+# take mean/meidan of estimates across TFs and folds
+singleTfModelBestTenDF <- dfCV %>% 
+  filter(name %in% ranked_models[1:10]) %>% 
+  select(name, id, tidy_model) %>% 
+  unnest(tidy_model) %>% 
+  # rename cor_* terms to only cor
+  mutate(term = str_replace(term, "^cor_.*", "cor")) %>% 
+  group_by(term) %>% 
+  summarize(
+    estimate_mean = mean(estimate, na.rm = TRUE),
+    estimate_median = median(estimate, na.rm = TRUE),
+    estimate_sd = sd(estimate, na.rm = TRUE)
+  )
+
+write_tsv(singleTfModelBestTenDF, paste0(outPrefix, "singleTfModelBestTenDF.tsv"))
+
+
+
+# add single TF model to dfCV
+dfCV <- dfCV %>% 
+  mutate(
+    singleTF_model = list(singleTfModelDF),
+    singleTFbestTen_model = list(singleTfModelBestTenDF)
+  )
+
 
 # remove fromular column because it cannot be saved properly.
 dfCV_save <- dfCV %>% 
@@ -342,6 +386,8 @@ dfCV_save <- dfCV %>%
   select(-design)
 
 save(dfCV_save, file = paste0(outPrefix, "dfCV_save.Rdata"))
+# write_rds(dfCV, path = paste0(outPrefix, "dfCV_save.rds"))
+
 # load(paste0(outPrefix, "dfCV_save.Rdata"))
 # write_feather(tmpDF, paste0(outPrefix, ".dfCV_tmp.feather"))
 # # tmpDF <- read_feather(paste0(outPrefix, ".dfCV_tmp.feather"))
@@ -356,7 +402,7 @@ dfCV <- dfCV_save %>%
 # add prediction
 dfCV <- dfCV %>% 
   mutate(
-    pred = pmap(
+    pred_specificTF = pmap(
       list(
         map(splits, assessment), 
         design, 
@@ -366,18 +412,37 @@ dfCV <- dfCV %>%
       )
   )
 
+# add prediction using single TF model
+dfCV <- dfCV %>% 
+  mutate(
+    pred_singleTF = pmap(list(
+        map(splits, assessment), design, map(singleTF_model, "estimate_mean")
+      ), pred_logit),
+    pred_singleTFbestTen = pmap(list(
+      map(splits, assessment), design, map(singleTFbestTen_model, "estimate_mean")
+    ), pred_logit)
+  )
+
+
 dfCV <- dfCV %>% 
   mutate(
     label = map(map(splits, assessment), "loop")
   )
 
+# gather the two differnt prediction types into one colum
+dfCV <- dfCV %>%
+  gather(pred, pred_singleTF, key = "pred_type", value = "pred")
+
+# dfCV <- dfCV %>%
+#   mutate(pred_type = rep(c("pred_specificTF", "pred_singleTF"), c(1240, 1240)))
 
 # extract only the needed columns
 evalDF <- dfCV %>% 
   mutate(
-    fold = parse_integer(str_replace(id, "Fold", ""))
+    fold = parse_integer(str_replace(id, "Fold", "")),
+    modnames = paste0(name, "_", str_replace(pred_type, "pred_", ""))
   ) %>% 
-  select(name, fold, pred, label)
+  select(modnames, fold, pred, label)
 
 # save evalDF
 save(evalDF, file = paste0(outPrefix, ".evalDF.Rdata"))  
@@ -396,30 +461,32 @@ posDF <- evalDF %>%
 curves <- evalmod(
   scores = evalDF$pred,
   labels = evalDF$label,
-  modnames = evalDF$name,
+  modnames = evalDF$modnames,
   dsids = evalDF$fold,
   posclass = levels(evalDF$label[[1]])[2],
   x_bins = 100)
 
 
 # get data.frame with auc values
-aucDF <- as_tibble(auc(curves))
+aucDF <- as_tibble(auc(curves)) %>% 
+  separate(modnames, into = c("name", "pred_type"), sep = "_", remove = FALSE)
 
 # get ranked modle names
 ranked_models <- aucDF %>% 
   filter(curvetypes == "PRC") %>% 
-  group_by(modnames) %>% 
+  filter(pred_type == "specificTF") %>% 
+  group_by(name) %>% 
   summarize(
     auc_mean = mean(aucs, na.rm = TRUE)
   ) %>% 
   arrange(desc(auc_mean)) %>% 
-  select(modnames) %>% 
+  select(name) %>% 
   unlist()
 
 # order aucDF by ranks
 aucDF <- aucDF %>% 
-  mutate(modnames = factor(modnames, ranked_models)) %>% 
-  arrange(modnames)
+  mutate(name = factor(name, ranked_models)) %>% 
+  arrange(name, pred_type)
 
 # get data from fro ggplot
 # curveDF <- precrec::fortify(curves)
@@ -430,29 +497,31 @@ COL_TF <- COL_TF[seq(1, length(ranked_models))]
 names(COL_TF) <- ranked_models
 
 aucDFmed <- aucDF %>%
-  group_by(modnames, curvetypes) %>% 
+  group_by(name, pred_type, curvetypes) %>% 
   summarize(
     aucs_median = median(aucs, na.rm = TRUE),
     aucs_mean = mean(aucs, na.rm = TRUE),
     aucs_sd = sd(aucs, na.rm = TRUE)
   )
 
+aucDFmed <- aucDFmed %>%
+  filter(name %in% ranked_models[1:6])
+
 #-------------------------------------------------------------------------------
 # barplot of AUCs of ROC and PRC
 #-------------------------------------------------------------------------------
-p <- ggplot(aucDFmed, aes(x = modnames, y = aucs_mean, fill = modnames)) +
-  geom_bar(stat = "identity", color = "black") +
+p <- ggplot(aucDFmed, aes(x = name, y = aucs_mean, fill = pred_type)) +
+  geom_bar(stat = "identity", color = "black", position = "dodge") +
   geom_errorbar(aes(ymin = aucs_mean - aucs_sd, ymax = aucs_mean + aucs_sd),
-                width = .25) + 
-  geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), size = 3, hjust = 1, angle = 90) +
+                width = .25, position = position_dodge(width = 1)) + 
+  geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), size = 3, hjust = 1, angle = 90, position = position_dodge(width = 1)) +
   facet_grid(curvetypes ~ ., scales = "free") +
   theme_bw() +
-  theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "none") +
-  scale_fill_manual(values = COL_TF) +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "bottom") +
+  # scale_fill_manual(values = COL_TF) +
   labs(x = "Models", y = "AUC")
-p
 
-ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot.pdf"), w = 14, h = 7)
+ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF_and_predType.barplot.pdf"), w = 14, h = 7)
 
 # get ROC plots
 aucDFroc <- aucDF %>% 
