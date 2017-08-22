@@ -311,8 +311,12 @@ useTF <- meta$name
 # k fold cross validation with 1 repeats
 set.seed(3579)
 
-dfCV <- df %>% 
-  vfold_cv(V = K, repeats = 1)
+tidyCV <- df %>% 
+  vfold_cv(V = K, repeats = 1) %>% 
+  tidy()
+
+write_feather(tidyCV, paste0(outPrefix, ".tidyCV.feather"))
+
 
 # get design formula for each TF
 designDF <- tibble(
@@ -321,26 +325,57 @@ designDF <- tibble(
 )
 
 # expand data.frame to have all combinations of model and split
-dfCV <- dfCV %>% 
-  tidyr::expand(name = useTF, id) %>% 
-  left_join(dfCV, by = "id") %>% 
+# dfCV <- dfCV %>% 
+#   tidyr::expand(name = useTF, id) %>% 
+#   left_join(dfCV, by = "id") %>% 
+#   # add design formular for each TF
+#   left_join(designDF, by = "name")
+cvDF <- tidyCV %>% 
+  distinct(Fold) %>% 
+  tidyr::expand(name = useTF, Fold) %>% 
   # add design formular for each TF
   left_join(designDF, by = "name")
 
-
-# fit model on training part and predict on test split
-dfCV <- dfCV %>% 
+# fit model on training part
+cvDF <- cvDF %>% 
   # fit model and save estimates in tidy format
   mutate(
-    tidy_model = map2(splits, design, tidy_fitter)
-  ) 
+    tidy_model = map2(Fold, design, .f = tidyer_fitter, 
+                      tidyCV = tidyCV, data = df)
+  )
+
+# add id colum as integer for folds
+cvDF <- cvDF %>% 
+  mutate(id = parse_integer(str_replace(Fold, "^Fold", "")))
+
+# # remove fromular column because it cannot be saved properly.
+# dfCV_save <- dfCV %>% 
+#   mutate(design_str = map(design, as.character)) %>% 
+#   select(-design)
+
+write_rds(cvDF, path = paste0(outPrefix, "cvDF_trained.rds"))
+
+# save(dfCV_save, file = paste0(outPrefix, "dfCV_save.Rdata"))
+# write_rds(dfCV, path = paste0(outPrefix, "dfCV_save.rds"))
+
+# load(paste0(outPrefix, "dfCV_save.Rdata"))
+# write_feather(tmpDF, paste0(outPrefix, ".dfCV_tmp.feather"))
+# # tmpDF <- read_feather(paste0(outPrefix, ".dfCV_tmp.feather"))
+
+# str2formular <- function(str_vec){
+#   as.formula(paste(str_vec[2], str_vec[1], str_vec[3]))
+# }
+
+# dfCV <- dfCV_save %>% 
+#   mutate(design = map(design_str, str2formular))
+
 
 #-------------------------------------------------------------------------------
 # combine models to a single one
 #-------------------------------------------------------------------------------
 
 # take mean/meidan of estimates across TFs and folds
-singleTfModelDF <- dfCV %>% 
+singleTfModelDF <- cvDF %>% 
   select(name, id, tidy_model) %>% 
   unnest(tidy_model) %>% 
   # rename cor_* terms to only cor
@@ -354,57 +389,30 @@ singleTfModelDF <- dfCV %>%
 
 write_tsv(singleTfModelDF, paste0(outPrefix, "singleTfModelDF.tsv"))
 
-# take mean/meidan of estimates across TFs and folds
-singleTfModelBestTenDF <- dfCV %>% 
-  filter(name %in% ranked_models[1:10]) %>% 
-  select(name, id, tidy_model) %>% 
-  unnest(tidy_model) %>% 
-  # rename cor_* terms to only cor
-  mutate(term = str_replace(term, "^cor_.*", "cor")) %>% 
-  group_by(term) %>% 
-  summarize(
-    estimate_mean = mean(estimate, na.rm = TRUE),
-    estimate_median = median(estimate, na.rm = TRUE),
-    estimate_sd = sd(estimate, na.rm = TRUE)
-  )
+# # take mean/meidan of estimates across TFs and folds
+# singleTfModelBestTenDF <- dfCV %>% 
+#   filter(name %in% ranked_models[1:10]) %>% 
+#   select(name, id, tidy_model) %>% 
+#   unnest(tidy_model) %>% 
+#   # rename cor_* terms to only cor
+#   mutate(term = str_replace(term, "^cor_.*", "cor")) %>% 
+#   group_by(term) %>% 
+#   summarize(
+#     estimate_mean = mean(estimate, na.rm = TRUE),
+#     estimate_median = median(estimate, na.rm = TRUE),
+#     estimate_sd = sd(estimate, na.rm = TRUE)
+#   )
+# 
+# write_tsv(singleTfModelBestTenDF, paste0(outPrefix, "singleTfModelBestTenDF.tsv"))
 
-write_tsv(singleTfModelBestTenDF, paste0(outPrefix, "singleTfModelBestTenDF.tsv"))
-
-
-
-# add single TF model to dfCV
-dfCV <- dfCV %>% 
-  mutate(
-    singleTF_model = list(singleTfModelDF),
-    singleTFbestTen_model = list(singleTfModelBestTenDF)
-  )
-
-
-# remove fromular column because it cannot be saved properly.
-dfCV_save <- dfCV %>% 
-  mutate(design_str = map(design, as.character)) %>% 
-  select(-design)
-
-save(dfCV_save, file = paste0(outPrefix, "dfCV_save.Rdata"))
-# write_rds(dfCV, path = paste0(outPrefix, "dfCV_save.rds"))
-
-# load(paste0(outPrefix, "dfCV_save.Rdata"))
-# write_feather(tmpDF, paste0(outPrefix, ".dfCV_tmp.feather"))
-# # tmpDF <- read_feather(paste0(outPrefix, ".dfCV_tmp.feather"))
-
-str2formular <- function(str_vec){
-  as.formula(paste(str_vec[2], str_vec[1], str_vec[3]))
-}
-
-dfCV <- dfCV_save %>% 
-  mutate(design = map(design_str, str2formular))
-
+#-------------------------------------------------------------------------------
 # add prediction
-dfCV <- dfCV %>% 
+#-------------------------------------------------------------------------------
+cvDF <- cvDF %>% 
   mutate(
     pred_specificTF = pmap(
       list(
-        map(splits, assessment), 
+        map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), 
         design, 
         map(tidy_model, "estimate")
         ), 
@@ -413,40 +421,42 @@ dfCV <- dfCV %>%
   )
 
 # add prediction using single TF model
-dfCV <- dfCV %>% 
+cvDF <- cvDF %>% 
   mutate(
-    pred_singleTF = pmap(list(
-        map(splits, assessment), design, map(singleTF_model, "estimate_mean")
-      ), pred_logit),
-    pred_singleTFbestTen = pmap(list(
-      map(splits, assessment), design, map(singleTFbestTen_model, "estimate_mean")
-    ), pred_logit)
+    pred_singleTF = map2(
+      .x = map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), 
+      .y = design, 
+      .f = pred_logit,
+      betas = singleTfModelDF$estimate_mean
+    ),
+    # pred_singleTFbestTen = pmap(list(
+    #   map(splits, assessment), design, map(singleTFbestTen_model, "estimate_mean")
+    # ), pred_logit)
   )
 
 
-dfCV <- dfCV %>% 
+cvDF <- cvDF %>% 
   mutate(
-    label = map(map(splits, assessment), "loop")
+    label = map(map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), "loop")
   )
+
+# save with predictions
+write_rds(cvDF, path = paste0(outPrefix, "cvDF.rds"))
+
 
 # gather the two differnt prediction types into one colum
-dfCV <- dfCV %>%
-  gather(pred, pred_singleTF, key = "pred_type", value = "pred")
-
-# dfCV <- dfCV %>%
-#   mutate(pred_type = rep(c("pred_specificTF", "pred_singleTF"), c(1240, 1240)))
-
 # extract only the needed columns
-evalDF <- dfCV %>% 
+evalDF <- cvDF %>% 
+  gather(starts_with("pred_"), key = "pred_type", value = "pred") %>% 
   mutate(
-    fold = parse_integer(str_replace(id, "Fold", "")),
+    fold = id,
     modnames = paste0(name, "_", str_replace(pred_type, "pred_", ""))
   ) %>% 
   select(modnames, fold, pred, label)
 
 # save evalDF
-save(evalDF, file = paste0(outPrefix, ".evalDF.Rdata"))  
-# load(paste0(outPrefix, ".evalDF.Rdata"))
+write_rds(evalDF, paste0(outPrefix, ".evalDF.rds"))  
+# evalDF <- read_rds(paste0(outPrefix, ".evalDF.rds"))
 
 
 # get number and percent of positives
@@ -488,6 +498,8 @@ aucDF <- aucDF %>%
   mutate(name = factor(name, ranked_models)) %>% 
   arrange(name, pred_type)
 
+write_feather(aucDF, paste0(outPrefix, "aucDF.feather"))
+
 # get data from fro ggplot
 # curveDF <- precrec::fortify(curves)
 
@@ -504,8 +516,8 @@ aucDFmed <- aucDF %>%
     aucs_sd = sd(aucs, na.rm = TRUE)
   )
 
-aucDFmed <- aucDFmed %>%
-  filter(name %in% ranked_models[1:6])
+# aucDFmed <- aucDFmed %>%
+#   filter(name %in% ranked_models[1:6])
 
 #-------------------------------------------------------------------------------
 # barplot of AUCs of ROC and PRC
@@ -520,7 +532,7 @@ p <- ggplot(aucDFmed, aes(x = name, y = aucs_mean, fill = pred_type)) +
   theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "bottom") +
   # scale_fill_manual(values = COL_TF) +
   labs(x = "Models", y = "AUC")
-
+p
 ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF_and_predType.barplot.pdf"), w = 14, h = 7)
 
 # get ROC plots
