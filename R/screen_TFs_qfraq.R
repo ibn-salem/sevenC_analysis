@@ -22,15 +22,16 @@ require(rsample)
 # require(recipes)
 require(pryr) # for object_size()
 require(feather)      # for efficient storing of data.frames
+require(multidplyr)   # for partition() and collect() to work in parallel
 
 source("R/chromloop.functions.R")
 
 #-----------------------------------------------------------------------
 # Options for parallel computation
 # use all available cores but generate random number streams on each worker
-multicorParam <- MulticoreParam(RNGseed = 34312)
+# multicorParam <- MulticoreParam(RNGseed = 34312)
 # set options
-register(multicorParam)
+# register(multicorParam)
 # bpparam() # to print current options
 
 
@@ -38,9 +39,9 @@ register(multicorParam)
 
 # use previously saved gi object?
 GI_LOCAL <- FALSE
+N_CORES = parallel::detectCores() - 2
+
 MIN_MOTIF_SIG <- 6
-
-
 WINDOW_SIZE <- 1000
 BIN_SIZE <- 1
 K = 10  # K-fold corss validation
@@ -301,8 +302,7 @@ ggsave(p, file = paste0(outPrefix, ".cor.by_TF_and_loop.boxplot.pdf"), w = 28, h
 useTF <- meta$name
 
 #filter for a subset of TFS
-# useTF <- useTF[1:3]
-
+#
 
 # ------------------------------------------------------------------------------
 # cross validation in a tidy approach 
@@ -334,26 +334,49 @@ cvDF <- tidyCV %>%
   distinct(Fold) %>% 
   tidyr::expand(name = useTF, Fold) %>% 
   # add design formular for each TF
-  left_join(designDF, by = "name")
+  left_join(designDF, by = "name") %>% 
+  mutate(id = parse_integer(str_replace(Fold, "^Fold", "")))
+
+# partion data for parallel processing
+cluster <- create_cluster(N_CORES) %>% 
+  cluster_library(packages = c("tidyverse")) %>% 
+  cluster_copy(tidyCV) %>% 
+  cluster_copy(df)
+
+
+cluster_eval(cluster, source("R/chromloop.functions.R"))
+
+cvPar <- cvDF %>% 
+  partition(name, Fold, cluster = cluster)
 
 # fit model on training part
-cvDF <- cvDF %>% 
+cvPar <- cvPar %>% 
   # fit model and save estimates in tidy format
   mutate(
     tidy_model = map2(Fold, design, .f = tidyer_fitter, 
                       tidyCV = tidyCV, data = df)
   )
 
-# add id colum as integer for folds
-cvDF <- cvDF %>% 
-  mutate(id = parse_integer(str_replace(Fold, "^Fold", "")))
+# collect results from cluster
+cvDF <- cvPar %>% 
+  collect()
+
+# # fit model on training part
+# cvDF <- cvDF %>% 
+#   # fit model and save estimates in tidy format
+#   mutate(
+#     tidy_model = map2(Fold, design, .f = tidyer_fitter, 
+#                       tidyCV = tidyCV, data = df)
+#   )
+
 
 # # remove fromular column because it cannot be saved properly.
 # dfCV_save <- dfCV %>% 
 #   mutate(design_str = map(design, as.character)) %>% 
 #   select(-design)
 
-write_rds(cvDF, path = paste0(outPrefix, "cvDF_trained.rds"))
+# write_rds(cvDF, path = paste0(outPrefix, "cvDF_trained.rds"))
+write_rds(cvDF, path = paste0(outPrefix, "cvDF_trained_para.rds"))
 
 # save(dfCV_save, file = paste0(outPrefix, "dfCV_save.Rdata"))
 # write_rds(dfCV, path = paste0(outPrefix, "dfCV_save.rds"))
