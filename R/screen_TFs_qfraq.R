@@ -7,32 +7,15 @@ require(chromloop)    # devtools::install_github("ibn-salem/chromloop")
 require(tidyverse)    # for tidy data
 require(stringr)      # for string functions
 require(modelr)       # for tidy modeling
-require(forcats)      # for factors
 require(precrec)      # for ROC and PRC curves
 require(RColorBrewer)   # for nice colors
 require(rtracklayer)  # to import() BED files
-require(colorRamps)  # to pick different colors
-require(scales)     # for scales in plotting and percent() formatin function
-require(stringr)    # for string function and regular expressions
-require(BiocParallel) # for parallelisation
-require(biobroom)     # to make BioC classes tidy
-require(grid)         # for textGrob
-require(magrittr)     # for "tee" pipe %T>% 
 require(rsample)
-# require(recipes)
 require(pryr) # for object_size()
 require(feather)      # for efficient storing of data.frames
 require(multidplyr)   # for partition() and collect() to work in parallel
 
 source("R/chromloop.functions.R")
-
-#-----------------------------------------------------------------------
-# Options for parallel computation
-# use all available cores but generate random number streams on each worker
-# multicorParam <- MulticoreParam(RNGseed = 34312)
-# set options
-# register(multicorParam)
-# bpparam() # to print current options
 
 
 # 0) Set parameter --------------------------------------------------------
@@ -51,30 +34,18 @@ TRUE_LOOPS <- "HIC_ChIAPET"
 
 # COL_TF = c(colorRampPalette(brewer.pal(8, "Set1"))(9), "#80da3a")
 # COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray70", "gray50", "gray30")
-# pie(rep(1, length(COL_TF)), col=COL_TF, labels=COL_TF, main=length(COL_TF))
-
-# COL_TF = grDevices::colors()[grep('gr(a|e)y', grDevices::colors(), invert = T)]
-# str_view(grDevices::colors(), "[^\d]$")
-# str_view(grDevices::colors(), "^((?!gr(a|e)y).)*[^\\d]$")
 COL_TF <- grDevices::colors()[str_detect(grDevices::colors(), "^((?!(gr(a|e)y|white)).)*[^\\d]$")]
 COL_TF <- COL_TF[!COL_TF %in% c("white", "black", "aliceblue", "azure", "beige", "bisque", "cornsilk", "cyan", "darkorchid", "coral", "darkmagenta")]
-# pie(rep(1, 50), col=COL_TF, labels = COL_TF)
-# pie(rep(1, length(COL_TF)), col=COL_TF)
-# COL_TF = colorRamps::primary.colors(12)
+# pie(rep(1, length(COL_TF)), col = COL_TF, labels = COL_TF, main = length(COL_TF))
+# COL_TF = colorRamps::primary.colors(124)
 
-#barplot(1:10, col=COL_TF)
 COL_LOOP = brewer.pal(8, "Dark2")[c(8,5)] #[c(2,1,5,6)]
 names(COL_LOOP) <- c("No loop", "Loop")
 
-# outPrefix <- file.path("results", "v01_UCSC_motifs")
-outPrefix <- file.path(
-  "results", 
-  paste0("v03_screen_TF_qfraq.",
-         paste0("motifSig", MIN_MOTIF_SIG),
-         "_w", WINDOW_SIZE,
-         "_b", BIN_SIZE
-  )
-)
+outPrefix <- file.path("results", paste0("v03_screen_TF_qfraq.", 
+                                         paste0("motifSig", MIN_MOTIF_SIG), 
+                                         "_w", WINDOW_SIZE, 
+                                         "_b", BIN_SIZE))
 
 dir.create(dirname(outPrefix), showWarnings = FALSE)
 
@@ -87,11 +58,13 @@ LoopTang2015_GM12878_Files <- c(
   "data/Tang2015/GSM1872886_GM12878_CTCF_PET_clusters.txt",
   "data/Tang2015/GSM1872887_GM12878_RNAPII_PET_clusters.txt")
 
+# Capture Hi-C files
 CaptureHiC_Files <- c(
   "data/Mifsud2015/TS5_GM12878_promoter-promoter_significant_interactions.txt",
   "data/Mifsud2015/TS5_GM12878_promoter-other_significant_interactions.txt"
 )
 
+# metadata file
 metaFile <- "data/ENCODE/metadata.fltBam.tsv"
 
 #-------------------------------------------------------------------------------
@@ -112,6 +85,7 @@ meta <- read_tsv(metaFile,
                    )
 )
 
+# reformat metadata
 meta <- meta %>% 
   mutate(name = TF) %>%
   mutate(filePath = str_c(filePath, "-qfrags_allChr_chip.bed.sorted.bedGraph.bw")) %>% 
@@ -295,18 +269,13 @@ p <- ggplot(tidySubDF, aes(x = name, y = cor, col = loop)) +
   labs(y = "Correlation of ChIP-seq signal", x="")
 ggsave(p, file = paste0(outPrefix, ".cor.by_TF_and_loop.boxplot.pdf"), w = 28, h = 7)
 
-# ------------------------------------------------------------------------------
-# Predict loops 
-# ------------------------------------------------------------------------------
+#===============================================================================
+# Training and Cross-validation
+#===============================================================================
 
 useTF <- meta$name
-
 #filter for a subset of TFS
 #
-
-# ------------------------------------------------------------------------------
-# cross validation in a tidy approach 
-# ------------------------------------------------------------------------------
 
 # k fold cross validation with 1 repeats
 set.seed(3579)
@@ -316,7 +285,7 @@ tidyCV <- df %>%
   tidy()
 
 write_feather(tidyCV, paste0(outPrefix, ".tidyCV.feather"))
-
+# tidyCV <- read_feather(paste0(outPrefix, ".tidyCV.feather"))
 
 # get design formula for each TF
 designDF <- tibble(
@@ -325,11 +294,6 @@ designDF <- tibble(
 )
 
 # expand data.frame to have all combinations of model and split
-# dfCV <- dfCV %>% 
-#   tidyr::expand(name = useTF, id) %>% 
-#   left_join(dfCV, by = "id") %>% 
-#   # add design formular for each TF
-#   left_join(designDF, by = "name")
 cvDF <- tidyCV %>% 
   distinct(Fold) %>% 
   tidyr::expand(name = useTF, Fold) %>% 
@@ -343,9 +307,10 @@ cluster <- create_cluster(N_CORES) %>%
   cluster_copy(tidyCV) %>% 
   cluster_copy(df)
 
-
+# evaluate help function code on each cluster
 cluster_eval(cluster, source("R/chromloop.functions.R"))
 
+# partition data set to clusters
 cvPar <- cvDF %>% 
   partition(name, Fold, cluster = cluster)
 
@@ -361,37 +326,12 @@ cvPar <- cvPar %>%
 cvDF <- cvPar %>% 
   collect()
 
-# # fit model on training part
-# cvDF <- cvDF %>% 
-#   # fit model and save estimates in tidy format
-#   mutate(
-#     tidy_model = map2(Fold, design, .f = tidyer_fitter, 
-#                       tidyCV = tidyCV, data = df)
-#   )
+write_rds(cvDF, path = paste0(outPrefix, "cvDF_trained.rds"))
+# write_rds(cvDF, path = paste0(outPrefix, "cvDF_trained_para.rds"))
 
-
-# # remove fromular column because it cannot be saved properly.
-# dfCV_save <- dfCV %>% 
-#   mutate(design_str = map(design, as.character)) %>% 
-#   select(-design)
-
-# write_rds(cvDF, path = paste0(outPrefix, "cvDF_trained.rds"))
-write_rds(cvDF, path = paste0(outPrefix, "cvDF_trained_para.rds"))
-
-# save(dfCV_save, file = paste0(outPrefix, "dfCV_save.Rdata"))
-# write_rds(dfCV, path = paste0(outPrefix, "dfCV_save.rds"))
-
-# load(paste0(outPrefix, "dfCV_save.Rdata"))
-# write_feather(tmpDF, paste0(outPrefix, ".dfCV_tmp.feather"))
-# # tmpDF <- read_feather(paste0(outPrefix, ".dfCV_tmp.feather"))
-
-# str2formular <- function(str_vec){
-#   as.formula(paste(str_vec[2], str_vec[1], str_vec[3]))
-# }
-
-# dfCV <- dfCV_save %>% 
-#   mutate(design = map(design_str, str2formular))
-
+#===============================================================================
+# Prediction
+#===============================================================================
 
 #-------------------------------------------------------------------------------
 # combine models to a single one
@@ -412,25 +352,8 @@ singleTfModelDF <- cvDF %>%
 
 write_tsv(singleTfModelDF, paste0(outPrefix, "singleTfModelDF.tsv"))
 
-# # take mean/meidan of estimates across TFs and folds
-# singleTfModelBestTenDF <- dfCV %>% 
-#   filter(name %in% ranked_models[1:10]) %>% 
-#   select(name, id, tidy_model) %>% 
-#   unnest(tidy_model) %>% 
-#   # rename cor_* terms to only cor
-#   mutate(term = str_replace(term, "^cor_.*", "cor")) %>% 
-#   group_by(term) %>% 
-#   summarize(
-#     estimate_mean = mean(estimate, na.rm = TRUE),
-#     estimate_median = median(estimate, na.rm = TRUE),
-#     estimate_sd = sd(estimate, na.rm = TRUE)
-#   )
-# 
-# write_tsv(singleTfModelBestTenDF, paste0(outPrefix, "singleTfModelBestTenDF.tsv"))
 
-#-------------------------------------------------------------------------------
-# add prediction
-#-------------------------------------------------------------------------------
+# add prediction using individual TF specific models
 cvDF <- cvDF %>% 
   mutate(
     pred_specificTF = pmap(
@@ -465,7 +388,11 @@ cvDF <- cvDF %>%
 
 # save with predictions
 write_rds(cvDF, path = paste0(outPrefix, "cvDF.rds"))
+# cvDF <- read_rds(paste0(outPrefix, "cvDF.rds"))
 
+#===============================================================================
+# Performance Evaluation
+#===============================================================================
 
 # gather the two differnt prediction types into one colum
 # extract only the needed columns
@@ -523,13 +450,78 @@ aucDF <- aucDF %>%
 
 write_feather(aucDF, paste0(outPrefix, "aucDF.feather"))
 
-# get data from fro ggplot
-# curveDF <- precrec::fortify(curves)
+#-------------------------------------------------------------------------------
+# Take parameters from best N models
+#-------------------------------------------------------------------------------
+N_TOP_MODELS = 10
+bestNModelDF <- cvDF %>%
+  filter(name %in% ranked_models[1:N_TOP_MODELS]) %>%
+  select(name, id, tidy_model) %>%
+  unnest(tidy_model) %>%
+  # rename cor_* terms to only cor
+  mutate(term = str_replace(term, "^cor_.*", "cor")) %>%
+  group_by(term) %>%
+  summarize(
+    estimate_mean = mean(estimate, na.rm = TRUE),
+    estimate_median = median(estimate, na.rm = TRUE),
+    estimate_sd = sd(estimate, na.rm = TRUE)
+  )
+
+write_tsv(bestNModelDF, paste0(outPrefix, "bestNModelDF.tsv"))
+
+# add prediction using N best models
+cvDF <- cvDF %>% 
+  mutate(pred_bestNTF = map2(
+      .x = map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), 
+      .y = design, 
+      .f = pred_logit,
+      betas = bestNModelDF$estimate_mean
+    ))
+
+
+# save with predictions of n best models
+write_rds(cvDF, path = paste0(outPrefix, "cvDF_withBestN.rds"))
+# cvDF <- read_rds(paste0(outPrefix, "cvDF_withBestN.rds"))
+
+
+#-------------------------------------------------------------------------------
+# AUC of different predictions
+#-------------------------------------------------------------------------------
+
+# gather the two differnt prediction types into one colum
+evalDF <- cvDF %>% 
+  gather(starts_with("pred_"), key = "pred_type", value = "pred") %>% 
+  mutate(
+    fold = id,
+    modnames = paste0(name, "_", str_replace(pred_type, "pred_", ""))
+  ) %>% 
+  select(modnames, fold, pred, label) 
+
+# save evalDF
+write_rds(evalDF, paste0(outPrefix, ".evalDF.rds"))  
+# evalDF <- read_rds(paste0(outPrefix, ".evalDF.rds"))
+
+# get AUC of ROC and PRC curves for all 
+curves <- evalmod(
+  scores = evalDF$pred,
+  labels = evalDF$label,
+  modnames = evalDF$modnames,
+  dsids = evalDF$fold,
+  posclass = levels(evalDF$label[[1]])[2],
+  x_bins = 100)
+
+
+# get data.frame with auc values
+aucDF <- as_tibble(auc(curves)) %>% 
+  separate(modnames, into = c("name", "pred_type"), sep = "_", remove = FALSE) %>% 
+  mutate(name = factor(name, ranked_models))
+
+write_feather(aucDF, paste0(outPrefix, "aucDF.feather"))
+
 
 # build color vector with TFs as names
-# TF_models <- ranked_models
-COL_TF <- COL_TF[seq(1, length(ranked_models))]
-names(COL_TF) <- ranked_models
+# COL_TF <- COL_TF[seq(1, length(ranked_models))]
+# names(COL_TF) <- ranked_models
 
 aucDFmed <- aucDF %>%
   group_by(name, pred_type, curvetypes) %>% 
@@ -555,7 +547,7 @@ p <- ggplot(aucDFmed, aes(x = name, y = aucs_mean, fill = pred_type)) +
   theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "bottom") +
   # scale_fill_manual(values = COL_TF) +
   labs(x = "Models", y = "AUC")
-p
+
 ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF_and_predType.barplot.pdf"), w = 14, h = 7)
 
 # get ROC plots
@@ -595,118 +587,10 @@ g <- autoplot(curves, "PRC", size = 4) +
   theme(legend.position = "none")
 # g
 ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
+
 #===============================================================================
 #===============================================================================
 
-
-# ------------------------------------------------------------------------------
-# New tidy approach :)
-# ------------------------------------------------------------------------------
-
-design <- loop ~ dist + strandOrientation + score_min + cor
-
-grp <- tidyDF %>% 
-  select(-starts_with("Loop_"), -score_1, -score_2) %>% # remove unused columns
-  filter(name %in% useTF) %>% # filter for only TFs in useTF
-  group_by(name)              # group by TF
-
-# Make k-fold cros-validation by splitting data for each gorup (TF)
-cv <- grp %>% 
-  do(crossv_kfold(data = ., k = K)) 
-
-
-#' fitts a logit model to training data and returns prediction response vector
-#' on test data
-#' 
-#' @param training_data data set with training data.
-#' @param design a formular object defining the prediction design and variables.
-fitter <- function(training_data, design) {
-  glm(
-    design, 
-    family = binomial(link = 'logit'),
-    data = training_data,
-    model = FALSE, 
-    x = FALSE
-  ) 
-}
-
-
-#' fitts a logit model to training data and returns prediction response vector
-#' on test data
-#' 
-#' @param training_data data set with training data.
-#' @param test_data data set with training data.
-#' @param design a formular object defining the prediction design and variables.
-fitter_augment <- function(training_data, test_data, design) {
-  glm(
-    design, 
-    family = binomial(link = 'logit'),
-    data = training_data,
-    model = FALSE, 
-    x = FALSE
-  ) %>% 
-  broom::augment(newdata = training_data, type.predict = "response") %>% 
-  as_tibble()
-}
-
-
-#' fitts a logit model to training data and returns model fit
-#' 
-#' @param training_data data set with training data.
-#' @param design a formular object defining the prediction design and variables.
-fitter <- function(training_data, design) {
-  glm(
-    design, 
-    family = binomial(link = 'logit'),
-    data = training_data,
-    model = FALSE, 
-    x = FALSE
-  ) 
-}
-
-# %>% 
-#   predict(object = ., newdata = testing_data, type = "response")
-
-require(biglm)
-bm <- biglm::bigglm(design, data = cv$train[[1]], family = binomial(link = 'logit'))
-
-# apply traingin and prediction to data sets
-cvDF <- cv %>% 
-  # mutate(
-  #   model = map(train, fitter, design = design)
-  # ) %>% 
-  mutate(
-    aug = map2(train, test, fitter_augment, design = design)
-  )
-# ,
-#     pred = map2(model, test, prediction, type = "response"),
-#     label = map(test, function(df) as_tibble(df)[["loop"]])
-#   ) %>% 
-#   select(-train, -test) %>% 
-#   mutate(fold = parse_integer(.id))
-
-# pryr::object_size(tidyDF)
-save(cvDF, file = paste0(outPrefix, ".cvDF.Rdata"))  
-# load(paste0(outPrefix, ".cvDF.Rdata"))
-
-#-------------------------------------------------------------------------------
-# Analyse Model 
-#-------------------------------------------------------------------------------
-
-cvDF <- cvDF %>% 
-  mutate(
-    n_pos = map_dbl(label, function(l) sum(l == "Loop", na.rm = TRUE))
-  ) %>% 
-  mutate(tidy_model = map(model, broom::tidy)) %>% 
-  mutate(glance = map(model, broom::glance))
-
-
-# add model quality and mdoel as tidy DF
-byTFfold <- byTFfold %>% 
-  mutate(tidy_model = map(model, broom::tidy)) %>% 
-  mutate(glance = map(model, broom::glance))
-
-save(byTFfold, file = paste0(outPrefix, ".byTFfold.Rdata"))
 
 # Analyse Model parameters ----------------------------------------------------
 
@@ -751,8 +635,4 @@ ggsave(p, file = paste0(outPrefix, ".paramter.barplot.pdf"), w = 6, h = 12)
 
 
 
-
-#====================
-#====================
-#====================
 
