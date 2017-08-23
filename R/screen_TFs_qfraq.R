@@ -28,6 +28,7 @@ MIN_MOTIF_SIG <- 6
 WINDOW_SIZE <- 1000
 BIN_SIZE <- 1
 K = 10  # K-fold corss validation
+N_TOP_MODELS = 10
 
 TRUE_LOOPS <- "HIC_ChIAPET"
 # TRUE_LOOPS <- "HIC_ChIAPET_CaptureC"
@@ -67,6 +68,15 @@ CaptureHiC_Files <- c(
 # metadata file
 metaFile <- "data/ENCODE/metadata.fltBam.tsv"
 
+SELECTED_TF <- c(
+  "RAD21",
+  "SMC3",
+  "CTCF",
+  "ZNF143",
+  "STAT1",
+  "STAT3",
+  "NFYB"
+)
 #-------------------------------------------------------------------------------
 # Parse and filter input ChiP-seq data  -----------------------------------
 #-------------------------------------------------------------------------------
@@ -327,31 +337,15 @@ cvDF <- cvPar %>%
   collect()
 
 write_rds(cvDF, path = paste0(outPrefix, "cvDF_trained.rds"))
-# write_rds(cvDF, path = paste0(outPrefix, "cvDF_trained_para.rds"))
+# cvDF <- read_rds(paste0(outPrefix, "cvDF_trained.rds"))
+
+# df <- read_feather(paste0(outPrefix, ".df.feather"))
+# tidyCV <- read_feather(paste0(outPrefix, ".tidyCV.feather"))
+# cvDF <- read_rds(paste0(outPrefix, "cvDF_trained.rds"))
 
 #===============================================================================
 # Prediction
 #===============================================================================
-
-#-------------------------------------------------------------------------------
-# combine models to a single one
-#-------------------------------------------------------------------------------
-
-# take mean/meidan of estimates across TFs and folds
-singleTfModelDF <- cvDF %>% 
-  select(name, id, tidy_model) %>% 
-  unnest(tidy_model) %>% 
-  # rename cor_* terms to only cor
-  mutate(term = str_replace(term, "^cor_.*", "cor")) %>% 
-  group_by(term) %>% 
-  summarize(
-    estimate_mean = mean(estimate, na.rm = TRUE),
-    estimate_median = median(estimate, na.rm = TRUE),
-    estimate_sd = sd(estimate, na.rm = TRUE)
-  )
-
-write_tsv(singleTfModelDF, paste0(outPrefix, "singleTfModelDF.tsv"))
-
 
 # add prediction using individual TF specific models
 cvDF <- cvDF %>% 
@@ -366,20 +360,6 @@ cvDF <- cvDF %>%
       )
   )
 
-# add prediction using single TF model
-cvDF <- cvDF %>% 
-  mutate(
-    pred_singleTF = map2(
-      .x = map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), 
-      .y = design, 
-      .f = pred_logit,
-      betas = singleTfModelDF$estimate_mean
-    ),
-    # pred_singleTFbestTen = pmap(list(
-    #   map(splits, assessment), design, map(singleTFbestTen_model, "estimate_mean")
-    # ), pred_logit)
-  )
-
 
 cvDF <- cvDF %>% 
   mutate(
@@ -387,8 +367,8 @@ cvDF <- cvDF %>%
   )
 
 # save with predictions
-write_rds(cvDF, path = paste0(outPrefix, "cvDF.rds"))
-# cvDF <- read_rds(paste0(outPrefix, "cvDF.rds"))
+write_rds(cvDF, path = paste0(outPrefix, "cvDF_specificTFpred.rds"))
+# cvDF <- read_rds(paste0(outPrefix, "cvDF_specificTFpred.rds"))
 
 #===============================================================================
 # Performance Evaluation
@@ -397,25 +377,16 @@ write_rds(cvDF, path = paste0(outPrefix, "cvDF.rds"))
 # gather the two differnt prediction types into one colum
 # extract only the needed columns
 evalDF <- cvDF %>% 
-  gather(starts_with("pred_"), key = "pred_type", value = "pred") %>% 
   mutate(
     fold = id,
-    modnames = paste0(name, "_", str_replace(pred_type, "pred_", ""))
+    pred = pred_specificTF,
+    modnames = name
   ) %>% 
   select(modnames, fold, pred, label)
 
 # save evalDF
-write_rds(evalDF, paste0(outPrefix, ".evalDF.rds"))  
-# evalDF <- read_rds(paste0(outPrefix, ".evalDF.rds"))
-
-
-# get number and percent of positives
-posDF <- evalDF %>% 
-  mutate(
-    n_pos = map_dbl(label, function(l) sum(l == "Loop", na.rm = TRUE)),
-    percent_pos = n_pos / map_dbl(label, length) * 100
-  )
-
+write_rds(evalDF, paste0(outPrefix, ".evalDF_specificTF.rds"))  
+# evalDF <- read_rds(paste0(outPrefix, ".evalDF_specificTF.rds"))
 
 # get AUC of ROC and PRC curves for all 
 curves <- evalmod(
@@ -428,32 +399,45 @@ curves <- evalmod(
 
 
 # get data.frame with auc values
-aucDF <- as_tibble(auc(curves)) %>% 
-  separate(modnames, into = c("name", "pred_type"), sep = "_", remove = FALSE)
+aucDF <-  as_tibble(auc(curves))
 
 # get ranked modle names
 ranked_models <- aucDF %>% 
   filter(curvetypes == "PRC") %>% 
-  filter(pred_type == "specificTF") %>% 
-  group_by(name) %>% 
+  group_by(modnames) %>% 
   summarize(
     auc_mean = mean(aucs, na.rm = TRUE)
   ) %>% 
   arrange(desc(auc_mean)) %>% 
-  select(name) %>% 
-  unlist()
+  pull(modnames)
 
 # order aucDF by ranks
 aucDF <- aucDF %>% 
-  mutate(name = factor(name, ranked_models)) %>% 
-  arrange(name, pred_type)
+  mutate(modnames = factor(modnames, ranked_models)) %>% 
+  arrange(modnames)
 
-write_feather(aucDF, paste0(outPrefix, "aucDF.feather"))
+write_feather(aucDF, paste0(outPrefix, "aucDF_specificTF.feather"))
 
 #-------------------------------------------------------------------------------
 # Take parameters from best N models
 #-------------------------------------------------------------------------------
-N_TOP_MODELS = 10
+
+# take mean/meidan of estimates across TFs and folds
+allTfModelDF <- cvDF %>% 
+  select(name, id, tidy_model) %>% 
+  unnest(tidy_model) %>% 
+  # rename cor_* terms to only cor
+  mutate(term = str_replace(term, "^cor_.*", "cor")) %>% 
+  group_by(term) %>% 
+  summarize(
+    estimate_mean = mean(estimate, na.rm = TRUE),
+    estimate_median = median(estimate, na.rm = TRUE),
+    estimate_sd = sd(estimate, na.rm = TRUE)
+  )
+
+write_tsv(allTfModelDF, paste0(outPrefix, "allTfModelDF.tsv"))
+
+# combine models to a single one
 bestNModelDF <- cvDF %>%
   filter(name %in% ranked_models[1:N_TOP_MODELS]) %>%
   select(name, id, tidy_model) %>%
@@ -468,21 +452,101 @@ bestNModelDF <- cvDF %>%
   )
 
 write_tsv(bestNModelDF, paste0(outPrefix, "bestNModelDF.tsv"))
+# bestNModelDF <- read_tsv(paste0(outPrefix, "bestNModelDF.tsv"))
 
-# add prediction using N best models
+#-------------------------------------------------------------------------------
+# Plot parameters
+#-------------------------------------------------------------------------------
+
+# get tidy model DF
+modelDF <- cvDF %>% 
+  unnest(tidy_model, .drop = TRUE) %>% 
+  mutate(term = str_replace(term, "^cor_.*", "cor")) %>% 
+  filter(name %in% SELECTED_TF) %>% 
+  select(name, id, term, estimate)
+
+allTF <- allTfModelDF %>%
+  mutate(estimate = estimate_mean, 
+         name = "allTF") %>% 
+  select(name, term, estimate)
+
+bestN <- bestNModelDF %>% 
+  mutate(estimate = estimate_mean,
+         name = "bestN") %>% 
+  select(name, term, estimate)
+
+modelDF <- modelDF %>% 
+  bind_rows(allTF, bestN)
+
+write_tsv(modelDF, paste0(outPrefix, ".modelDF.tsv"))
+
+# # add meta data
+# modelDF <- modelDF %>% 
+#   left_join(meta, by = "name")
+
+paramByModel <- modelDF %>% 
+  group_by(name, term) %>% 
+  summarize(
+    n = n(),
+    estimate_mean = mean(estimate),
+    estimate_sd = sd(estimate)
+  )
+
+p <- ggplot(paramByModel, aes(x = name, y = estimate_mean, fill = name)) + 
+  geom_bar(stat = "identity", position = "dodge") + 
+  geom_errorbar(aes(
+    ymin = estimate_mean - estimate_sd, 
+    ymax = estimate_mean + estimate_sd), width = 0.25) +
+  # geom_text(aes(label = round(estimate, 2)), vjust = "inward") + 
+  # facet_grid(param ~ ., scales = "free_y") + 
+  geom_text(aes(label = round(estimate_mean, 2)), hjust = "inward") + 
+  facet_grid(. ~ term , scales = "free_x") + 
+  coord_flip() +
+  labs(y = "Parameter estimate", x = "Model") + 
+  theme_bw() + scale_fill_manual(values = COL_TF) + 
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(p, file = paste0(outPrefix, ".selected_models.paramter.barplot.pdf"), w = 12, h = 6)
+
+
+#-------------------------------------------------------------------------------
+# Add predictions
+#-------------------------------------------------------------------------------
+
+# DEBUG prediction using custom model
+
+Rad21mod <- cvDF %>% 
+  filter(name == "RAD21", id == 1) %>% 
+  pull(tidy_model)
+
+Rad21mod <- Rad21mod[[1]]
+
+defaultDesign <- as.formula("loop ~ dist + strandOrientation + score_min + cor")
+  
 cvDF <- cvDF %>% 
-  mutate(pred_bestNTF = map2(
+  mutate(
+    # add prediction using single TF model
+    pred_allTF = map2(
       .x = map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), 
       .y = design, 
       .f = pred_logit,
-      betas = bestNModelDF$estimate_mean
-    ))
-
+      betas = allTfModelDF$estimate_mean),
+    # add prediction using N best models
+    pred_bestNTF = map2(
+      .x = map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), 
+      .y = design, 
+      .f = pred_logit,
+      betas = bestNModelDF$estimate_mean),
+    pred_rad21 = map2(
+      .x = map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), 
+      .y = design, 
+      .f = pred_logit,
+      betas = Rad21mod$estimate)
+    )
 
 # save with predictions of n best models
-write_rds(cvDF, path = paste0(outPrefix, "cvDF_withBestN.rds"))
-# cvDF <- read_rds(paste0(outPrefix, "cvDF_withBestN.rds"))
-
+write_rds(cvDF, path = paste0(outPrefix, "cvDF_withPred.rds"))
+# cvDF <- read_rds(paste0(outPrefix, "cvDF_withPred.rds"))
 
 #-------------------------------------------------------------------------------
 # AUC of different predictions
@@ -590,49 +654,3 @@ ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
 
 #===============================================================================
 #===============================================================================
-
-
-# Analyse Model parameters ----------------------------------------------------
-
-# get DF with model quality
-modelQualDF <- byTFfold %>% 
-  unnest(glance, .drop = TRUE)
-write_tsv(modelQualDF, paste0(outPrefix, ".modelQualDF.tsv"))
-
-# get tidy model DF
-modelDF <- byTFfold %>% 
-  unnest(tidy_model, .drop = TRUE)
-
-write_tsv(modelDF, paste0(outPrefix, ".modelDF.tsv"))
-
-# add meta data
-modelDF <- modelDF %>% 
-  left_join(meta, by = "name")
-
-paramByTF <- modelDF %>% 
-  group_by(name, term) %>% 
-  summarize(
-    n = n(),
-    estimate_mean = mean(estimate),
-    estimate_sd = sd(estimate)
-  )
-
-p <- ggplot(paramByTF, aes(x = name, y = estimate_mean, fill = name)) + 
-  geom_bar(stat = "identity", position = "dodge") + 
-  geom_errorbar(aes(
-    ymin = estimate_mean - estimate_sd, 
-    ymax = estimate_mean + estimate_sd), width = 0.25) +
-  # geom_text(aes(label = round(estimate, 2)), vjust = "inward") + 
-  # facet_grid(param ~ ., scales = "free_y") + 
-  geom_text(aes(label = round(estimate_mean, 2)), hjust = "inward") + 
-  facet_grid(. ~ term , scales = "free_x") + 
-  coord_flip() +
-  labs(y = "Parameter estimate", x = "Model") + 
-  theme_bw() + scale_fill_manual(values = COL_TF) + 
-  theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
-
-ggsave(p, file = paste0(outPrefix, ".paramter.barplot.pdf"), w = 6, h = 12)
-
-
-
-
