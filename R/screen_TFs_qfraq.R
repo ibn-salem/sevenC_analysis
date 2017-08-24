@@ -264,6 +264,19 @@ write_feather(df, paste0(outPrefix, ".df.feather"))
 # load(paste0(outPrefix, ".df.Rdata"))
 # df <- read_feather(paste0(outPrefix, ".df.feather"))
 
+#-------------------------------------------------------------------------------
+# split whole data set into EDA and prediction 
+#-------------------------------------------------------------------------------
+
+# randomly sample 10% of the data for EDA analysis
+split_eda <- sample.int(nrow(df), 0.1 * nrow(df))
+
+edaDF <- df[split_eda,]
+modDF <- df[-split_eda,]
+
+write_feather(edaDF, paste0(outPrefix, ".edaDF.feather"))
+write_feather(modDF, paste0(outPrefix, ".modDF.feather"))
+
 # #remove all but 3 TF columns
 # rmNames <- paste0("cor_", meta$name[4:nrow(meta)])
 # df <- df %>%
