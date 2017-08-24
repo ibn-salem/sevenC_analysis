@@ -77,6 +77,21 @@ SELECTED_TF <- c(
   "STAT3",
   "NFYB"
 )
+
+
+#-------------------------------------------------------------------------------
+# setup cluster
+#-------------------------------------------------------------------------------
+
+# partion data for parallel processing
+cluster <- create_cluster(N_CORES) %>% 
+  cluster_library(packages = c("tidyverse")) %>% 
+  cluster_copy(tidyCV) %>% 
+  cluster_copy(df)
+
+# evaluate help function code on each cluster
+cluster_eval(cluster, source("R/chromloop.functions.R"))
+
 #-------------------------------------------------------------------------------
 # Parse and filter input ChiP-seq data  -----------------------------------
 #-------------------------------------------------------------------------------
@@ -311,14 +326,6 @@ cvDF <- tidyCV %>%
   left_join(designDF, by = "name") %>% 
   mutate(id = parse_integer(str_replace(Fold, "^Fold", "")))
 
-# partion data for parallel processing
-cluster <- create_cluster(N_CORES) %>% 
-  cluster_library(packages = c("tidyverse")) %>% 
-  cluster_copy(tidyCV) %>% 
-  cluster_copy(df)
-
-# evaluate help function code on each cluster
-cluster_eval(cluster, source("R/chromloop.functions.R"))
 
 # partition data set to clusters
 cvPar <- cvDF %>% 
@@ -428,6 +435,7 @@ allTfModelDF <- cvDF %>%
   unnest(tidy_model) %>% 
   # rename cor_* terms to only cor
   mutate(term = str_replace(term, "^cor_.*", "cor")) %>% 
+  mutate(term = factor(term, unique(term))) %>% 
   group_by(term) %>% 
   summarize(
     estimate_mean = mean(estimate, na.rm = TRUE),
@@ -440,11 +448,12 @@ write_tsv(allTfModelDF, paste0(outPrefix, "allTfModelDF.tsv"))
 # combine models to a single one
 bestNModelDF <- cvDF %>%
   filter(name %in% ranked_models[1:N_TOP_MODELS]) %>%
-  select(name, id, tidy_model) %>%
-  unnest(tidy_model) %>%
+  select(name, id, tidy_model) %>% 
+  unnest(tidy_model) %>% 
   # rename cor_* terms to only cor
-  mutate(term = str_replace(term, "^cor_.*", "cor")) %>%
-  group_by(term) %>%
+  mutate(term = str_replace(term, "^cor_.*", "cor")) %>% 
+  mutate(term = factor(term, unique(term))) %>% 
+  group_by(term) %>% 
   summarize(
     estimate_mean = mean(estimate, na.rm = TRUE),
     estimate_median = median(estimate, na.rm = TRUE),
@@ -462,6 +471,7 @@ write_tsv(bestNModelDF, paste0(outPrefix, "bestNModelDF.tsv"))
 modelDF <- cvDF %>% 
   unnest(tidy_model, .drop = TRUE) %>% 
   mutate(term = str_replace(term, "^cor_.*", "cor")) %>% 
+  mutate(term = factor(term, unique(term))) %>% 
   filter(name %in% SELECTED_TF) %>% 
   select(name, id, term, estimate)
 
@@ -497,13 +507,11 @@ p <- ggplot(paramByModel, aes(x = name, y = estimate_mean, fill = name)) +
   geom_errorbar(aes(
     ymin = estimate_mean - estimate_sd, 
     ymax = estimate_mean + estimate_sd), width = 0.25) +
-  # geom_text(aes(label = round(estimate, 2)), vjust = "inward") + 
-  # facet_grid(param ~ ., scales = "free_y") + 
   geom_text(aes(label = round(estimate_mean, 2)), hjust = "inward") + 
   facet_grid(. ~ term , scales = "free_x") + 
   coord_flip() +
   labs(y = "Parameter estimate", x = "Model") + 
-  theme_bw() + scale_fill_manual(values = COL_TF) + 
+  theme_bw() + #scale_fill_manual(values = COL_TF) + 
   theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
 
 ggsave(p, file = paste0(outPrefix, ".selected_models.paramter.barplot.pdf"), w = 12, h = 6)
@@ -521,7 +529,7 @@ Rad21mod <- cvDF %>%
 
 Rad21mod <- Rad21mod[[1]]
 
-defaultDesign <- as.formula("loop ~ dist + strandOrientation + score_min + cor")
+# defaultDesign <- as.formula("loop ~ dist + strandOrientation + score_min + cor")
   
 cvDF <- cvDF %>% 
   mutate(
@@ -593,7 +601,8 @@ aucDFmed <- aucDF %>%
     aucs_median = median(aucs, na.rm = TRUE),
     aucs_mean = mean(aucs, na.rm = TRUE),
     aucs_sd = sd(aucs, na.rm = TRUE)
-  )
+  ) %>% 
+  mutate(topN = factor(name %in% ranked_models[1:N_TOP_MODELS], c(TRUE, FALSE), c("top_n", "rest")))
 
 # aucDFmed <- aucDFmed %>%
 #   filter(name %in% ranked_models[1:6])
@@ -602,6 +611,23 @@ aucDFmed <- aucDF %>%
 # barplot of AUCs of ROC and PRC
 #-------------------------------------------------------------------------------
 p <- ggplot(aucDFmed, aes(x = name, y = aucs_mean, fill = pred_type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(ymin = aucs_mean - aucs_sd, ymax = aucs_mean + aucs_sd),
+                width = .25, position = position_dodge(width = 1)) + 
+  # geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), size = 3, hjust = 1, angle = 90, position = position_dodge(width = 1)) +
+  facet_grid(curvetypes ~ ., scales = "free") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "bottom") +
+  # scale_fill_manual(values = COL_TF) +
+  labs(x = "Models", y = "AUC")
+
+ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF_and_predType.barplot.pdf"), w = 14, h = 7)
+
+# plot only selected TFs
+selectedDFmed <- aucDFmed %>% 
+  filter(name %in% SELECTED_TF)
+
+p <- ggplot(selectedDFmed, aes(x = name, y = aucs_mean, fill = pred_type)) +
   geom_bar(stat = "identity", color = "black", position = "dodge") +
   geom_errorbar(aes(ymin = aucs_mean - aucs_sd, ymax = aucs_mean + aucs_sd),
                 width = .25, position = position_dodge(width = 1)) + 
@@ -612,14 +638,25 @@ p <- ggplot(aucDFmed, aes(x = name, y = aucs_mean, fill = pred_type)) +
   # scale_fill_manual(values = COL_TF) +
   labs(x = "Models", y = "AUC")
 
-ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF_and_predType.barplot.pdf"), w = 14, h = 7)
+ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF_and_predType_selectedTF.barplot.pdf"), w = 7, h = 7)
+
+# boxplot of AUCs across TFs
+p <- ggplot(aucDFmed, aes(x = pred_type, y = aucs_mean, color = pred_type)) +
+  geom_boxplot() +
+  facet_grid(curvetypes ~ topN, margins = "topN") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "bottom") +
+  labs(x = "Models", y = "AUC")
+
+ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF_and_predType.boxplot.pdf"), w = 7, h = 7)
+
+
 
 # get ROC plots
 aucDFroc <- aucDF %>% 
   filter(curvetypes == "ROC")
 
 g <- autoplot(curves, "ROC") + 
-  # coord_cartesian(expand = FALSE) + 
   scale_color_manual(values = COL_TF,
                      labels = paste0(
                        aucDFroc$modnames, 
@@ -651,6 +688,67 @@ g <- autoplot(curves, "PRC", size = 4) +
   theme(legend.position = "none")
 # g
 ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
+
+#-------------------------------------------------------------------------------
+# Binary prediction
+#-------------------------------------------------------------------------------
+
+# percent true in prediction
+evDF <- evalDF %>% 
+  mutate(
+    pos_pred = map_dbl(pred, function(x) mean(x >= .5, na.rm = TRUE)),
+    pos_label = map_dbl(label, function(x) mean(x == "Loop", na.rm = TRUE))
+  )
+
+#-------------------------------------------------------------------------------
+# plot basic performance measurements:
+#-------------------------------------------------------------------------------
+# gather the two differnt prediction types into one colum
+evalDF <- cvDF %>% 
+  select(name, id, pred_allTF, label) %>% 
+  filter(name %in% SELECTED_TF) %>% 
+  filter(id == 1)
+
+
+basicEval <- evalmod(
+  scores = evalDF$pred_allTF,
+  labels = evalDF$label,
+  modnames = evalDF$name,
+  dsids = evalDF$id,
+  mode = "basic",
+  posclass = levels(evalDF$label[[1]])[2])
+
+basicEvalDF <- as_tibble(as.data.frame(basicEval))
+
+p <- autoplot(basicEval, curvetype = c("fscore"))
+p
+
+p <- autoplot(basicEval, curvetype = c("accuracy", "specificity", "sensitivity", "precision", "mcc", "fscore"))
+p
+#-------------------
+require("ROCR")
+n = 10^5
+
+pred <- prediction(evalDF$pred_allTF, evalDF$label, levels(evalDF$label[[1]]))
+fper <- performance(pred, measure = "f")
+
+
+evalDF <- evalDF %>% 
+  mutate(
+    cutoffs = slot(fper, "x.values"),
+    f1_score = slot(fper, "y.values"),
+    max_idx = map_int(f1_score, which.max),
+    max_cutoff = map2_dbl(cutoffs, max_idx, ~ .x[[.y]])
+  )
+
+cutoffs <- slot(pred, "cutoffs")  # list of length(TF) with cutoffs
+
+# perf <- performance(pred, measure = "tpr", x.measure = "fpr") 
+# perf_f <- performance(pred, "f") 
+
+plot(performance(pred, measure = "f"), col = brewer.pal(nrow(evalDF), "Dark2"))
+
+
 
 #===============================================================================
 #===============================================================================
