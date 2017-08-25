@@ -78,6 +78,7 @@ SELECTED_TF <- c(
   "NFYB"
 )
 
+COL_SELECTED_TF = brewer.pal(length(SELECTED_TF), "Set1")
 
 #-------------------------------------------------------------------------------
 # setup cluster
@@ -85,12 +86,13 @@ SELECTED_TF <- c(
 
 # partion data for parallel processing
 cluster <- create_cluster(N_CORES) %>% 
-  cluster_library(packages = c("tidyverse")) %>% 
-  cluster_copy(tidyCV) %>% 
-  cluster_copy(df)
+  cluster_library(packages = c("tidyverse")) 
 
 # evaluate help function code on each cluster
 cluster_eval(cluster, source("R/chromloop.functions.R"))
+
+# cluster_copy(tidyCV) %>% 
+# cluster_copy(df)
 
 #-------------------------------------------------------------------------------
 # Parse and filter input ChiP-seq data  -----------------------------------
@@ -437,6 +439,7 @@ aucDF <- aucDF %>%
   arrange(modnames)
 
 write_feather(aucDF, paste0(outPrefix, "aucDF_specificTF.feather"))
+# aucDF <- read_feather(paste0(outPrefix, "aucDF_specificTF.feather"))
 
 #-------------------------------------------------------------------------------
 # Take parameters from best N models
@@ -705,62 +708,83 @@ ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
 #-------------------------------------------------------------------------------
 # Binary prediction
 #-------------------------------------------------------------------------------
+require("ROCR")
 
-# percent true in prediction
-evDF <- evalDF %>% 
-  mutate(
-    pos_pred = map_dbl(pred, function(x) mean(x >= .5, na.rm = TRUE)),
-    pos_label = map_dbl(label, function(x) mean(x == "Loop", na.rm = TRUE))
-  )
-
-#-------------------------------------------------------------------------------
-# plot basic performance measurements:
-#-------------------------------------------------------------------------------
-# gather the two differnt prediction types into one colum
 evalDF <- cvDF %>% 
-  select(name, id, pred_allTF, label) %>% 
-  filter(name %in% SELECTED_TF) %>% 
+  select(name, id, pred_allTF, label) %>%
+  # filter(name %in% SELECTED_TF) %>% 
   filter(id == 1)
 
 
-basicEval <- evalmod(
-  scores = evalDF$pred_allTF,
-  labels = evalDF$label,
-  modnames = evalDF$name,
-  dsids = evalDF$id,
-  mode = "basic",
-  posclass = levels(evalDF$label[[1]])[2])
+# get prediction object with measurements
+predObj <- ROCR::prediction(evalDF$pred_allTF, evalDF$label, levels(evalDF$label[[1]]))
+perfObj <- ROCR::performance(predObj, measure = "f")
 
-basicEvalDF <- as_tibble(as.data.frame(basicEval))
+# get cutoff and f1-score for each model as lists
+cutoff_List <- slot(perfObj, "x.values")
+f1_List <- slot(perfObj, "y.values")
 
-p <- autoplot(basicEval, curvetype = c("fscore"))
-p
+# # plot f1-score vs. cutoffs
+# pdf(paste0(outPrefix, ".selectedTF.pred_allTF.f1-score_vs_cutoff.pdf"))
+#   plot(performance(predObj, measure = "f"), col = brewer.pal(nrow(evalDF), "Dark2"))
+# dev.off()
 
-p <- autoplot(basicEval, curvetype = c("accuracy", "specificity", "sensitivity", "precision", "mcc", "fscore"))
-p
-#-------------------
-require("ROCR")
-n = 10^5
+# plot f1-score vs. cutoffs using ggplot2
+f1DF <- tibble(
+  cutoff = unlist(cutoff_List),
+  f1_score = unlist(f1_List),
+  name = rep(evalDF$name, times = map_int(slot(perfObj, "x.values"), length))
+)
 
-pred <- prediction(evalDF$pred_allTF, evalDF$label, levels(evalDF$label[[1]]))
-fper <- performance(pred, measure = "f")
+p <- ggplot(f1DF, aes(x = cutoff, y = f1_score, color = name)) +
+  geom_line() +
+  theme_bw() + theme(legend.position = "none") 
+ggsave(p, file = paste0(outPrefix, ".allTF.pred_allTF.f1-score_vs_cutoff.pdf"), w = 5, h = 5)
 
+# plot curve only for selected TFs
+p <- ggplot(filter(f1DF, name %in% SELECTED_TF), aes(x = cutoff, y = f1_score, color = name)) +
+  geom_line() +
+  theme_bw() + theme(legend.position = "bottom") + 
+  scale_color_manual(values = COL_SELECTED_TF)
+ggsave(p, file = paste0(outPrefix, ".selectedTF.pred_allTF.f1-score_vs_cutoff.pdf"), w = 5, h = 5)
 
-evalDF <- evalDF %>% 
+#-------------------------------------------------------------------------------
+# get cutoff with maximal f1-score
+#-------------------------------------------------------------------------------
+
+f1ModelDF <- evalDF %>% 
   mutate(
-    cutoffs = slot(fper, "x.values"),
-    f1_score = slot(fper, "y.values"),
+    cutoffs = cutoff_List,
+    f1_score = f1_List,
     max_idx = map_int(f1_score, which.max),
-    max_cutoff = map2_dbl(cutoffs, max_idx, ~ .x[[.y]])
+    max_cutoff = map2_dbl(cutoffs, max_idx, ~ .x[[.y]]),
+    max_f1 = map2_dbl(f1_score, max_idx, ~ .x[[.y]])
+  ) %>% 
+  select(name, max_idx, max_cutoff, max_f1)
+
+write_rds(f1ModelDF, paste0(outPrefix, ".f1ModelDF.rds"))  
+write_tsv(f1ModelDF, paste0(outPrefix, ".f1ModelDF.tsv"))  
+
+allTFf1ModelDF <- f1ModelDF %>% 
+  summarize(
+    mean_max_cutoff = mean(max_cutoff, na.rm = TRUE),
+    median_max_cutoff = median(max_cutoff, na.rm = TRUE),
+    sd_max_cutoff = sd(max_cutoff, na.rm = TRUE)
+  )
+write_tsv(allTFf1ModelDF, paste0(outPrefix, ".f1ModelDF.tsv"))  
+
+# output the mean of the top N models
+ranked_models <- levels(aucDF$modnames)[1:10]
+
+topNf1ModelDF <- f1ModelDF %>% 
+  filter(name %in% ranked_models) %>% 
+  summarize(
+    mean_max_cutoff = mean(max_cutoff, na.rm = TRUE),
+    median_max_cutoff = median(max_cutoff, na.rm = TRUE),
+    sd_max_cutoff = sd(max_cutoff, na.rm = TRUE)
   )
 
-cutoffs <- slot(pred, "cutoffs")  # list of length(TF) with cutoffs
-
-# perf <- performance(pred, measure = "tpr", x.measure = "fpr") 
-# perf_f <- performance(pred, "f") 
-
-plot(performance(pred, measure = "f"), col = brewer.pal(nrow(evalDF), "Dark2"))
-
+write_tsv(topNf1ModelDF, paste0(outPrefix, ".topNf1ModelDF.tsv"))  
 
 
 #===============================================================================
