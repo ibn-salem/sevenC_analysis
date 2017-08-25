@@ -10,7 +10,8 @@ export BIN=bin
 export Q_DIR=../../Q
 export Q=${Q_DIR}/bin/Q
 export BEDTOOLS=${BIN}/bedtools2/bin/bedtools
-
+export FASTQ_DUMP="bin/sratoolkit.2.8.2-1-centos_linux64/bin/fastq-dump"
+export SAMTOOLS=${BIN}"/bin/samtools"
 mkdir -p ${BIN}
 
 #-----------------------------------------------------------------------
@@ -173,10 +174,10 @@ cd ../..
 
 function Qpipe {
   
-  LINK=$1
+  BAM=$1
 
-  # get bam file path from url
-  BAM=ENCODE/Experiments/$(basename $LINK)
+  # # get bam file path from url
+  # BAM=ENCODE/Experiments/$(basename $LINK)
 
     echo INFO: Working on file $BAM
 
@@ -220,10 +221,24 @@ function Qpipe {
 }
 export -f Qpipe
 
+function getEncodeBam {
+  BAM=ENCODE/Experiments/$(basename $1)
+  echo $BAM
+}
+export -f getEncodeBam
+
 # iterate over all BAM files
 # cat ENCODE/URLs.fltBam.txt | parallel mv {} destdir
-cat ENCODE/URLs.fltBam.txt | parallel -j 20 Qpipe
+cat ENCODE/URLs.fltBam.txt | parallel -j 1  getEncodeBam |parallel -j 20 Qpipe
 
+
+
+# function myFun {
+#   echo "myFun works on:" $1
+# }
+# export -f myFun
+# head ENCODE/URLs.fltBam.txt | parallel -j 1  getEncodeBam | parallel -j 1 myFun
+# head ENCODE/URLs.fltBam.txt | parallel -j 1 | ENCODE/Experiments/$(basename $LINK) |myFun
 
 
 #=======================================================================
@@ -361,6 +376,19 @@ SRA_DIR=sratoolkit.2.8.2-1-centos_linux64
 wget -P ${BIN} https://kent.dl.sourceforge.net/project/bowtie-bio/bowtie2/2.3.2/bowtie2-2.3.2-linux-x86_64.zip
 unzip ${BIN}/bowtie2-2.3.2-linux-x86_64.zip -d ${BIN}
 
+#=======================================================================
+# get Samtools
+#=======================================================================
+wget -P ${BIN} https://github.com/samtools/samtools/releases/download/1.5/samtools-1.5.tar.bz2
+tar xvfj ${BIN}/samtools-1.5.tar.bz2 -C ${BIN}
+
+cd ${BIN}
+BIN_ABS=$(pwd)
+cd samtools-1.5
+./configure --prefix=${BIN_ABS}
+make
+make install
+
 
 #-------------------------------------------------------------------------------
 # get human reference genome:
@@ -453,6 +481,56 @@ done # SAMPLE
   
 # can be used as:
 # ${BIN}/bowtie-1.2.1.1/bowtie
+
+#=======================================================================
+# Glucocorticoid receptor (GR) data from Reddy lab
+#=======================================================================
+mkdir -p Vockley2016
+wget -P Vockley2016 https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE79432&format=file
+tar -xf Vockley2016/GSE79432_RAW.tar
+
+#------------------------------------------------------------------------------
+# RNA-seq data : https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE79426
+# Note direct read counts per gene in 2 rep for DEX and etho
+#------------------------------------------------------------------------------
+
+gunzip Vockley2016/GSM2095194_DEX_3hr_Rep1.bam.sorted.counts.txt.gz
+
+#------------------------------------------------------------------------------
+# ChIP-seq data https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE79431
+#------------------------------------------------------------------------------
+# Only raw reads and peaks
+
+# SRR_ID        SAMEPLE
+# SRR3270911   	ChIP_DEX_rep1
+# SRR3270912	  ChIP_DEX_rep2
+# SRR3270913	  ChIP_EtOH_Rep1
+# SRR3270914    ChIP_EtOH_Rep2
+
+CHIP_SAMPLES="SRR3270911 SRR3270912 SRR3270913 SRR3270914"
+
+for S in ${CHIP_SAMPLES}; do
+  ${FASTQ_DUMP} -O Vockley2016/ChIP-seq --gzip SRR3270911
+done
+
+# mapping 
+for S in ${CHIP_SAMPLES}; do
+
+  ${BIN}/bowtie2-2.3.2/bowtie2 \
+    -p 20  --best -m 1 \
+    -x hg19/hg19 \
+    -U Vockley2016/ChIP-seq/${S}.fastq.gz \
+  |  view -bS - \
+  > Vockley2016/ChIP-seq/${S}.bowtie2.hg19.bam
+  
+  # Run Q pipeline to get qfraq and shifte-reads .bigWig files
+  Qpipe Vockley2016/ChIP-seq/${S}.bowtie2.hg19.bam
+
+done
+
+#------------------------------------------------------------------------------
+# ChIP-exo data https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE79429
+#------------------------------------------------------------------------------
 
 #=======================================================================
 # DNA shape from GBshape
@@ -563,7 +641,6 @@ mkdir -p ENCODE
 for F in $SELECTED_ENCODE; do
     wget -P ENCODE http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/${F} 
 done
-
 
 #=======================================================================
 # ENCODE TF ChIP-seq data:
