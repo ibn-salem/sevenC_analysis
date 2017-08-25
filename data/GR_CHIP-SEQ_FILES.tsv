@@ -1,0 +1,9 @@
+file_accession	data_type	TF	name	cell_type	treatment	replicate	output_type	path
+SRR3270911	ChIP-seq	GR	ChIP_DEX_rep1	A549	DEX	1	shifted_reads	data/Vockley2016/ChIP-seq/SRR3270911.bowtie2.hg19.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
+SRR3270911	ChIP-seq	GR	ChIP_DEX_rep1	A549	DEX	1	qfraq	data/Vockley2016/ChIP-seq/SRR3270911.bowtie2.hg19.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
+SRR3270912	ChIP-seq	GR	ChIP_DEX_rep2	A549	DEX	2	shifted_reads	data/Vockley2016/ChIP-seq/SRR3270912.bowtie2.hg19.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
+SRR3270912	ChIP-seq	GR	ChIP_DEX_rep2	A549	DEX	2	qfraq	data/Vockley2016/ChIP-seq/SRR3270912.bowtie2.hg19.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
+SRR3270913	ChIP-seq	GR	ChIP_EtOH_Rep1	A549	EtOH	1	shifted_reads	data/Vockley2016/ChIP-seq/SRR3270913.bowtie2.hg19.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
+SRR3270913	ChIP-seq	GR	ChIP_EtOH_Rep1	A549	EtOH	1	qfraq	data/Vockley2016/ChIP-seq/SRR3270913.bowtie2.hg19.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
+SRR3270914	ChIP-seq	GR	ChIP_EtOH_Rep2	A549	EtOH	2	shifted_reads	data/Vockley2016/ChIP-seq/SRR3270914.bowtie2.hg19.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
+SRR3270914	ChIP-seq	GR	ChIP_EtOH_Rep2	A549	EtOH	2	qfraq	data/Vockley2016/ChIP-seq/SRR3270914.bowtie2.hg19.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
