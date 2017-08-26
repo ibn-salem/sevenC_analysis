@@ -509,24 +509,38 @@ gunzip Vockley2016/GSM2095194_DEX_3hr_Rep1.bam.sorted.counts.txt.gz
 
 CHIP_SAMPLES="SRR3270911 SRR3270912 SRR3270913 SRR3270914"
 
+wget -P Vockley2016/ChIP-seq ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX/SRX165/SRX1650398/SRR3270911/SRR3270911.sra &
+wget -P Vockley2016/ChIP-seq ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX/SRX165/SRX1650399/SRR3270912/SRR3270912.sra &
+wget -P Vockley2016/ChIP-seq ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX/SRX165/SRX1650400/SRR3270913/SRR3270913.sra &
+wget -P Vockley2016/ChIP-seq ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX/SRX165/SRX1650401/SRR3270914/SRR3270914.sra &
+
+
 for S in ${CHIP_SAMPLES}; do
-  ${FASTQ_DUMP} -O Vockley2016/ChIP-seq --gzip SRR3270911
+
+  # ${FASTQ_DUMP} -O Vockley2016/ChIP-seq --gzip SRR3270911
+  ${FASTQ_DUMP} -O Vockley2016/ChIP-seq --gzip Vockley2016/ChIP-seq/${S}.sra &
 done
 
 # mapping 
 for S in ${CHIP_SAMPLES}; do
 
   ${BIN}/bowtie2-2.3.2/bowtie2 \
-    -p 20  --best -m 1 \
+    -p 20 \
     -x hg19/hg19 \
     -U Vockley2016/ChIP-seq/${S}.fastq.gz \
-  |  view -bS - \
+  | ${SAMTOOLS}  view -bS - \
   > Vockley2016/ChIP-seq/${S}.bowtie2.hg19.bam
   
   # Run Q pipeline to get qfraq and shifte-reads .bigWig files
   Qpipe Vockley2016/ChIP-seq/${S}.bowtie2.hg19.bam
 
 done
+
+# ChIP-seq peak calls:
+wget -P Vockley2016/ChIP-seq ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM2095nnn/GSM2095218/suppl/GSM2095218%5FDEX%5F3hr%5FGR%5FChIPseq%2ERep1%5Fpeaks%2Ebed%2Egz
+wget -P Vockley2016/ChIP-seq ftp://ftp.ncbi.nlm.nih.gov/geo/samples/GSM2095nnn/GSM2095219/suppl/GSM2095219%5FDEX%5F3hr%5FGR%5FChIPseq%2ERep2%5Fpeaks%2Ebed%2Egz
+
+gunzip Vockley2016/ChIP-seq/*_peaks.bed.gz
 
 #------------------------------------------------------------------------------
 # ChIP-exo data https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE79429
