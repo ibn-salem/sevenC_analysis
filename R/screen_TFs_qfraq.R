@@ -440,6 +440,7 @@ aucDF <- aucDF %>%
 
 write_feather(aucDF, paste0(outPrefix, "aucDF_specificTF.feather"))
 # aucDF <- read_feather(paste0(outPrefix, "aucDF_specificTF.feather"))
+# ranked_models <- levels(aucDF$modnames)[1:N_TOP_MODELS]
 
 #-------------------------------------------------------------------------------
 # Take parameters from best N models
@@ -457,9 +458,10 @@ allTfModelDF <- cvDF %>%
     estimate_mean = mean(estimate, na.rm = TRUE),
     estimate_median = median(estimate, na.rm = TRUE),
     estimate_sd = sd(estimate, na.rm = TRUE)
-  )
+  ) %>% 
+  mutate(term = parse_character(term))
 
-write_tsv(allTfModelDF, paste0(outPrefix, "allTfModelDF.tsv"))
+write_tsv(allTfModelDF, paste0(outPrefix, ".allTfModelDF.tsv"))
 
 # combine models to a single one
 bestNModelDF <- cvDF %>%
@@ -474,10 +476,11 @@ bestNModelDF <- cvDF %>%
     estimate_mean = mean(estimate, na.rm = TRUE),
     estimate_median = median(estimate, na.rm = TRUE),
     estimate_sd = sd(estimate, na.rm = TRUE)
-  )
+  ) %>% 
+  mutate(term = parse_character(term))
 
-write_tsv(bestNModelDF, paste0(outPrefix, "bestNModelDF.tsv"))
-# bestNModelDF <- read_tsv(paste0(outPrefix, "bestNModelDF.tsv"))
+write_tsv(bestNModelDF, paste0(outPrefix, ".bestNModelDF.tsv"))
+# bestNModelDF <- read_tsv(paste0(outPrefix, ".bestNModelDF.tsv"))
 
 #-------------------------------------------------------------------------------
 # Plot parameters
