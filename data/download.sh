@@ -12,6 +12,7 @@ export Q=${Q_DIR}/bin/Q
 export BEDTOOLS=${BIN}/bedtools2/bin/bedtools
 export FASTQ_DUMP="bin/sratoolkit.2.8.2-1-centos_linux64/bin/fastq-dump"
 export SAMTOOLS=${BIN}"/bin/samtools"
+export FASTQC=${BIN}/FastQC/fastqc
 mkdir -p ${BIN}
 
 #-----------------------------------------------------------------------
@@ -389,6 +390,12 @@ cd samtools-1.5
 make
 make install
 
+#=======================================================================
+# get fastqc
+#=======================================================================
+wget -P ${BIN} https://www.bioinformatics.babraham.ac.uk/projects/fastqc/fastqc_v0.11.5.zip
+unzip ${BIN}/fastqc_v0.11.5.zip -d ${BIN}
+chmod ug+rx ${BIN}/FastQC/fastqc
 
 #-------------------------------------------------------------------------------
 # get human reference genome:
@@ -485,16 +492,19 @@ done # SAMPLE
 #=======================================================================
 # Glucocorticoid receptor (GR) data from Reddy lab
 #=======================================================================
-mkdir -p Vockley2016
-wget -P Vockley2016 https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE79432&format=file
-tar -xf Vockley2016/GSE79432_RAW.tar
+mkdir -p Vockley2016/ChIP-seq
+mkdir -p Vockley2016/RNA-seq
+
+# wget -P Vockley2016 https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE79432&format=file
+# tar -xf Vockley2016/GSE79432_RAW.tar
 
 #------------------------------------------------------------------------------
 # RNA-seq data : https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE79426
 # Note direct read counts per gene in 2 rep for DEX and etho
 #------------------------------------------------------------------------------
-
-gunzip Vockley2016/GSM2095194_DEX_3hr_Rep1.bam.sorted.counts.txt.gz
+wget -O Vockley2016/RNA-seq/GSE79426_RAW.tar "https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE79426&format=file"
+tar -xf  Vockley2016/RNA-seq/GSE79426_RAW.tar -C Vockley2016/RNA-seq/
+gunzip Vockley2016/RNA-seq/*.gz
 
 #------------------------------------------------------------------------------
 # ChIP-seq data https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE79431
@@ -521,7 +531,10 @@ for S in ${CHIP_SAMPLES}; do
   ${FASTQ_DUMP} -O Vockley2016/ChIP-seq --gzip Vockley2016/ChIP-seq/${S}.sra &
 done
 
-# mapping 
+# run fastqc
+$FASTQC -t 10 Vockley2016/ChIP-seq/*.fastq.gz
+
+# mapp
 for S in ${CHIP_SAMPLES}; do
 
   ${BIN}/bowtie2-2.3.2/bowtie2 \
@@ -530,10 +543,23 @@ for S in ${CHIP_SAMPLES}; do
     -U Vockley2016/ChIP-seq/${S}.fastq.gz \
   | ${SAMTOOLS}  view -bS - \
   > Vockley2016/ChIP-seq/${S}.bowtie2.hg19.bam
+
+# Warning: gzbuffer added in zlib v1.2.3.5. Unable to change buffer size from default of 8192.
+# 21484328 reads; of these:
+#   21484328 (100.00%) were unpaired; of these:
+#     21478228 (99.97%) aligned 0 times
+#     5248 (0.02%) aligned exactly 1 time
+#     852 (0.00%) aligned >1 times
+# 0.03% overall alignment rate
   
   # Run Q pipeline to get qfraq and shifte-reads .bigWig files
   Qpipe Vockley2016/ChIP-seq/${S}.bowtie2.hg19.bam
-
+  
+  # Run MACS2
+  macs2 callpeak \
+    -t Vockley2016/ChIP-seq/${S}.bowtie2.hg19.bam \
+    -B --SPMR -g hs \
+    -n Vockley2016/ChIP-seq/${S}.bowtie2.hg19.bam.macs2
 done
 
 # ChIP-seq peak calls:
@@ -545,6 +571,38 @@ gunzip Vockley2016/ChIP-seq/*_peaks.bed.gz
 #------------------------------------------------------------------------------
 # ChIP-exo data https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE79429
 #------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+# get selected ENCODE BAM files: https://www.encodeproject.org/experiments/ENCSR000BJR/
+#------------------------------------------------------------------------------
+mkdir -p GR_BAM
+wget -P GR_BAM https://www.encodeproject.org/files/ENCFF642SKG/@@download/ENCFF642SKG.bam
+wget -P GR_BAM https://www.encodeproject.org/files/ENCFF966AYA/@@download/ENCFF966AYA.bam
+
+for S in "ENCFF642SKG" "ENCFF966AYA"; do
+
+  # Run MACS2
+  macs2 callpeak \
+    -t GR_BAM/${S}.bam \
+    -B --SPMR -g hs \
+    -n GR_BAM/${S}.bam.macs2
+
+  # Run Q pipeline to get qfraq and shifte-reads .bigWig files
+  Qpipe GR_BAM/${S}.bam
+  
+done
+
+# download ENCODE fold cange over ethanol as bigWig
+wget -P GR_BAM https://www.encodeproject.org/files/ENCFF678TFX/@@download/ENCFF678TFX.bigWig
+
+
+
+#=======================================================================
+# GR actiaveion expression data from Starick et al
+#=======================================================================
+# mkdir -p Starick2015
+# wget -P Starick2015 http://www.ebi.ac.uk/arrayexpress/files/E-MTAB-2954/E-MTAB-2954.raw.1.zip
+# unzip Starick2015/E-MTAB-2954.raw.1.zip -d Starick2015
 
 #=======================================================================
 # DNA shape from GBshape
