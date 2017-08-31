@@ -595,7 +595,13 @@ done
 # download ENCODE fold cange over ethanol as bigWig
 wget -P GR_BAM https://www.encodeproject.org/files/ENCFF678TFX/@@download/ENCFF678TFX.bigWig
 
+# download ENCODE peak files for GR over ethanol:
+# ENCFF645POH (conservative idr thresholded peaks)
+wget -P GR_BAM https://www.encodeproject.org/files/ENCFF645POH/@@download/ENCFF645POH.bed.gz
+# ENCFF080RMP (optimal idr thresholded peaks)
+wget -P GR_BAM https://www.encodeproject.org/files/ENCFF080RMP/@@download/ENCFF080RMP.bed.gz
 
+gunzip GR_BAM/*.gz
 
 #=======================================================================
 # GR actiaveion expression data from Starick et al
