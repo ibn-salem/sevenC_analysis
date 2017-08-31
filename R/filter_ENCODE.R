@@ -33,6 +33,7 @@ reportFile <- "data/ENCODE/report.tsv"
 # parse report containing metadata for each experiment
 report <- read_tsv(
   reportFile,
+  skip = 1,
   col_types = cols(
     `Biological replicate` = col_character(),
     `Technical replicate` = col_character()
@@ -206,14 +207,6 @@ fltOuttype %>%
 #-------------------------------------------------------------------------------
 # Filter for fold change and all TFs -------------------------------------------------
 #-------------------------------------------------------------------------------
-plotDF <- df %>%
-  # filter(Lab == "ENCODE Processing Pipeline") %>%
-  distinct(TF, `Output type`, file_nrep, .keep_all = TRUE) %>% 
-  group_by(`Output type`, file_nrep) %>%
-  summarise(
-    mean_size = mean(size, na.rm = TRUE),
-    n = n()
-  )
 
 fcDF <- df %>% 
   filter(`Output type` %in% c("fold change over control"), file_nrep == 2) %>%
@@ -222,15 +215,15 @@ fcDF <- df %>%
   mutate(filePath = file.path("data", "ENCODE", "Experiments", basename(`File download URL`))) %>% 
   select(1:9, usedTF, filePath, everything())
 
+fcDF %>%
+  select(`File accession`:Lab, -rep, filePath) %>%
+  write_tsv(path = file.path("data", "ENCODE", "metadata.fcDF.tsv"))
+
 fcDF %>% 
   select(`File download URL`) %>%
   write_tsv(
     path = file.path("data", "ENCODE", "URLs.fcDF.txt"),
     col_names = FALSE)
-
-fcDF %>%
-  select(`File accession`:Lab, -rep, filePath) %>%
-  write_tsv(path = file.path("data", "ENCODE", "metadata.fcDF.tsv"))
 
 #-------------------------------------------------------------------------------
 # get BAM files
