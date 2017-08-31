@@ -58,7 +58,7 @@ meta_raw <- read_tsv(
 meta <- meta_raw %>%
   left_join(
     report,
-    select(report, Accession, `Target label`),
+    # select(report, Accession, `Target label`),
     by = c("Experiment accession" = "Accession")
   ) %>%
   mutate(TF = `Target label`, Lab = Lab.x) %>%
@@ -72,6 +72,7 @@ meta <- meta_raw %>%
          rep, file_nrep, exp_nrep, `File format`, Lab, size, date, everything()) 
 
 
+# filter for bigWig
 # filter for GM12878
 # filter for hg19
 df <- meta %>%
@@ -83,37 +84,37 @@ df <- meta %>%
 
 # utils:::format.object_size(x, format="auto")
 plotDF <- df %>%
-  # filter(Lab == "ENCODE Processing Pipeline") %>%
+  distinct(TF, `Output type`, file_nrep, .keep_all = TRUE) %>% 
   group_by(`Output type`, file_nrep) %>%
   summarise(
       mean_size = mean(size, na.rm = TRUE),
       n = n()
   )
 
-#plotDF %>% count(`Output type`)
-# utils:::format.object_size(plotDF$mean_size, "Mb")
+
+write_rds(str_c(outPrefix, ".n_by_outputType_and_nrep.plotDF.rds"))
 
 p <- plotDF %>%
-  ggplot(aes(x = `Output type`, y = n, fill = factor(file_nrep))) + 
+  ggplot(aes(x = `Output type`, y = n, fill = factor(file_nrep), label = n)) + 
   geom_bar(stat = "identity", position = "dodge") +
+  geom_text(vjust = 1.2, position = position_dodge(.9)) +
   theme_bw() + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ggsave(str_c(outPrefix, ".n_by_outputType_and_nrep.barplot.pdf"))
 
 
 p <- plotDF %>%
-  ggplot(aes(x=`Output type`, y=mean_size, fill = factor(file_nrep))) + 
-  geom_bar(stat="identity", position="dodge") +
+  ggplot(aes(x = `Output type`, y = mean_size, fill = factor(file_nrep))) + 
+  geom_bar(stat = "identity", position = "dodge") +
   theme_bw() + 
-  theme(axis.text.x=element_text(angle=45, hjust=1))
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ggsave(str_c(outPrefix, ".mean_size_by_outputType_and_nrep.barplot.pdf"))
 
 p <- df %>%
-  filter(`Biosample term name` == "GM12878") %>%
-  ggplot(aes(x=`Output type`, y=size, fill=factor(file_nrep))) + 
+  ggplot(aes(x = `Output type`, y = size, fill = factor(file_nrep))) + 
   geom_boxplot() +
   theme_bw() + 
-  theme(axis.text.x=element_text(angle=45, hjust=1))
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ggsave(str_c(outPrefix, ".size_by_outputType_and_nrep.boxplot.pdf"))
 
 
@@ -202,19 +203,22 @@ fltOuttype %>%
   select(`File accession`:Lab, -rep, filePath) %>%
   write_tsv(path = file.path("data", "ENCODE", "metadata.fltOuttype.tsv"))
 
+#-------------------------------------------------------------------------------
 # Filter for fold change and all TFs -------------------------------------------------
+#-------------------------------------------------------------------------------
+plotDF <- df %>%
+  # filter(Lab == "ENCODE Processing Pipeline") %>%
+  distinct(TF, `Output type`, file_nrep, .keep_all = TRUE) %>% 
+  group_by(`Output type`, file_nrep) %>%
+  summarise(
+    mean_size = mean(size, na.rm = TRUE),
+    n = n()
+  )
+
 fcDF <- df %>% 
-  filter(`Output type` %in% c("signal", "fold change over control")) %>%
-  # filter(`Output type` %in% c("fold change over control")) %>%
-  filter(`Biological replicate(s)` == "1, 2" | file_nrep == "Unknown") %>%
-  # filter(map_lgl(rep, setequal, 1:2) | is.na(rep)) %>% 
-  # filter(file_nrep == 2 | `Output type` == "raw signal") %>% 
-  # filter(rep == "1" | is.na(rep)) %>%
-  # filter(`Biosample term name` == "GM12878") %>%
-  # filter(TF %in% c("CTCF", "REST", "STAT1")) %>%
+  filter(`Output type` %in% c("fold change over control"), file_nrep == 2) %>%
+  distinct(TF, .keep_all = TRUE) %>% 
   mutate(usedTF = TF %in% useTFs) %>%
-  arrange(desc(TF), desc(`Output type`), desc(date)) %>%
-  distinct(`Output type`, TF, .keep_all = TRUE) %>%
   mutate(filePath = file.path("data", "ENCODE", "Experiments", basename(`File download URL`))) %>% 
   select(1:9, usedTF, filePath, everything())
 
