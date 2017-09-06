@@ -264,7 +264,7 @@ write_feather(df, paste0(outPrefix, ".df.feather"))
 # Training and Cross-validation
 #===============================================================================
 
-useTF <- meta$name
+# useTF <- meta$name
 #filter for a subset of TFS
 #
 
@@ -280,14 +280,14 @@ write_feather(tidyCV, paste0(outPrefix, ".tidyCV.feather"))
 
 # get design formula for each TF
 designDF <- tibble(
-  name = useTF,
-  design = map(useTF, ~as.formula(paste0("loop ~ dist + strandOrientation + score_min + cor_", .x)) )
+  name = meta$name,
+  design = map(meta$name, ~as.formula(paste0("loop ~ dist + strandOrientation + score_min + cor_", .x)) )
 )
 
 # expand data.frame to have all combinations of model and split
 cvDF <- tidyCV %>% 
   distinct(Fold) %>% 
-  tidyr::expand(name = useTF, Fold) %>% 
+  tidyr::expand(name = meta$name, Fold) %>% 
   # add design formular for each TF
   left_join(designDF, by = "name") %>% 
   mutate(id = parse_integer(str_replace(Fold, "^Fold", "")))
@@ -322,7 +322,7 @@ write_rds(cvDF, path = paste0(outPrefix, "cvDF_trained.rds"))
 #===============================================================================
 
 # add prediction using individual TF specific models
-cvDFpred <- cvDF %>%
+cvDF <- cvDF %>%
   partition(name, Fold, cluster = cluster) %>% 
   mutate(
     pred_specificTF = pmap(
@@ -603,7 +603,7 @@ p <- ggplot(aucDFmed, aes(x = name, y = aucs_mean, fill = pred_type)) +
   facet_grid(curvetypes ~ ., scales = "free") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "bottom") +
-  # scale_fill_manual(values = COL_TF) +
+  scale_fill_brewer(palette = "Blues") +
   labs(x = "Models", y = "AUC")
 
 ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF_and_predType.barplot.pdf"), w = 14, h = 7)
@@ -612,7 +612,7 @@ ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF_and_predType.barplot.pdf"
 selectedDFmed <- aucDFmed %>% 
   filter(name %in% SELECTED_TF)
 
-p <- ggplot(selectedDFmed, aes(x = name, y = aucs_mean, fill = pred_type)) +
+p <- ggplot(selectedDFmed, aes(x = name, y = aucs_mean, fill =  pred_type)) +
   geom_bar(stat = "identity", color = "black", position = "dodge") +
   geom_errorbar(aes(ymin = aucs_mean - aucs_sd, ymax = aucs_mean + aucs_sd),
                 width = .25, position = position_dodge(width = 1)) + 
@@ -620,20 +620,26 @@ p <- ggplot(selectedDFmed, aes(x = name, y = aucs_mean, fill = pred_type)) +
   facet_grid(curvetypes ~ ., scales = "free") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "bottom") +
-  # scale_fill_manual(values = COL_TF) +
+  scale_fill_brewer(palette = "Blues") +
   labs(x = "Models", y = "AUC")
-
 ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF_and_predType_selectedTF.barplot.pdf"), w = 7, h = 7)
 
 # boxplot of AUCs across TFs
-p <- ggplot(aucDFmed, aes(x = pred_type, y = aucs_mean, color = pred_type)) +
+p <- ggplot(aucDFmed, aes(x = pred_type, y = aucs_mean, fill = pred_type)) +
   geom_boxplot() +
   facet_grid(curvetypes ~ topN, margins = "topN") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "bottom") +
+  scale_fill_brewer(palette = "Blues") + 
   labs(x = "Models", y = "AUC")
 
 ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF_and_predType.boxplot.pdf"), w = 7, h = 7)
+
+
+#===============================================================================
+# TODO: Did run it only until here.
+#===============================================================================
+stop("Stop here!")
 
 #-------------------------------------------------------------------------------
 # get ROC plots
@@ -672,7 +678,7 @@ g <- autoplot(curvesSub, "ROC", show_cb = TRUE) +
   theme(legend.position = c(.75,.4))
 
 # g
-ggsave(g, file= paste0(outPrefix, ".ROC.pdf"), w = 5, h = 5)
+ggsave(g, file= paste0(outPrefix, ".selectedTF_specificTF.ROC.pdf"), w = 5, h = 5)
 
 # get PRC plots
 aucDFprc <- aucDF %>% 
