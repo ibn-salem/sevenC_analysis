@@ -10,15 +10,16 @@ outPrefix <- file.path("results", "data.ENCODE")
 dir.create(dirname(outPrefix), showWarnings = FALSE)
 
 useTFs <- c(
+  "RAD21",
+  "CTCF",
   "ZNF143",
   "STAT1",
-  "ZNF274",
-  "ZNF384",
-  "CTCF",
-  "RAD21",
-  "POLR2A",
-  "NFYB"
+  "EP300",
+  "POLR2A"
 )
+
+# "NFKB",
+# "NFYB",
 
 #-------------------------------------------------------------------------------
 # parse meta data and filter
@@ -93,7 +94,7 @@ plotDF <- df %>%
   )
 
 
-write_rds(str_c(outPrefix, ".n_by_outputType_and_nrep.plotDF.rds"))
+write_rds(plotDF, str_c(outPrefix, ".n_by_outputType_and_nrep.plotDF.rds"))
 
 p <- plotDF %>%
   ggplot(aes(x = `Output type`, y = n, fill = factor(file_nrep), label = n)) + 
@@ -209,14 +210,21 @@ fltOuttype %>%
 #-------------------------------------------------------------------------------
 
 fcDF <- df %>% 
-  filter(`Output type` %in% c("fold change over control"), file_nrep == 2) %>%
+  # filter for output type "fold change" with 2 replicates or "signal" 
+  filter(`Output type` %in% c("fold change over control", "signal")) %>% 
+  filter(file_nrep == 2 | `Output type` == "signal") %>%
+  # reorder rows to prefere "fold change over control" for each TF in distinct()
+  mutate(output_type = factor(`Output type`, c("fold change over control", "signal"))) %>% 
+  arrange(TF, output_type) %>% 
+  # take only a unique data set per TF
   distinct(TF, .keep_all = TRUE) %>% 
+  # annotte with TF selection and file path
   mutate(usedTF = TF %in% useTFs) %>%
   mutate(filePath = file.path("data", "ENCODE", "Experiments", basename(`File download URL`))) %>% 
-  select(1:9, usedTF, filePath, everything())
+  select(`File accession`, TF, output_type, usedTF, filePath, file_nrep, Lab, everything())
 
 fcDF %>%
-  select(`File accession`:Lab, -rep, filePath) %>%
+  select(-rep) %>%
   write_tsv(path = file.path("data", "ENCODE", "metadata.fcDF.tsv"))
 
 fcDF %>% 

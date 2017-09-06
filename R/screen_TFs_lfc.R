@@ -64,14 +64,24 @@ LoopTang2015_GM12878_Files <- c(
 # metaFile <- "data/ENCODE/metadata.fltBam.tsv"
 metaFile <- "data/ENCODE/metadata.fcDF.tsv"
 
+# SELECTED_TF <- c(
+#   "RAD21",
+#   "SMC3",
+#   "CTCF",
+#   "ZNF143",
+#   "STAT1",
+#   "STAT3",
+#   "NFYB"
+# )
+
+
 SELECTED_TF <- c(
   "RAD21",
-  "SMC3",
   "CTCF",
   "ZNF143",
   "STAT1",
-  "STAT3",
-  "NFYB"
+  "EP300",
+  "POLR2A"
 )
 
 COL_SELECTED_TF = brewer.pal(length(SELECTED_TF), "Set1")
@@ -82,13 +92,11 @@ COL_SELECTED_TF = brewer.pal(length(SELECTED_TF), "Set1")
 
 # partion data for parallel processing
 cluster <- create_cluster(N_CORES) %>% 
-  cluster_library(packages = c("tidyverse")) 
+  cluster_library(packages = c("chromloop", "tidyverse"))
 
 # evaluate help function code on each cluster
 cluster_eval(cluster, source("R/chromloop.functions.R"))
 
-# cluster_copy(tidyCV) %>% 
-# cluster_copy(df)
 
 #-------------------------------------------------------------------------------
 # Parse and filter input ChiP-seq data  -----------------------------------
@@ -165,26 +173,30 @@ if (!GI_LOCAL ) {
   # iterate over all ChIP-seq sata sets
   for (i in seq_len(nrow(meta))) {
     
-    message("INFO: --> Working on sample: ", meta$name[i], ", ", i, " of ", nrow(meta), " <--")
-    
-    # add coverage  
-    regions(gi) <- chromloop::addCovToGR(
-      regions(gi), 
-      meta$filePath[i], 
-      window = WINDOW_SIZE,
-      bin_size = BIN_SIZE,
-      colname = paste0("cov_", meta$name[i])
-    )
-    
-    # add correlations
-    gi <- chromloop::applyToCloseGI(
-      gi, 
-      datcol = paste0("cov_", meta$name[i]),
-      fun = cor, 
-      colname = paste0("cor_", meta$name[i])
-    )  
-  }
-    
+    # check if sample is not present yet.
+    if ( !paste0("cor_", meta$name[i]) %in% names(mcols(gi))){
+      
+      message("INFO: --> Working on sample: ", meta$name[i], ", ", i, " of ", nrow(meta), " <--")
+      
+      # add coverage  
+      regions(gi) <- chromloop::addCovToGR(
+        regions(gi), 
+        meta$filePath[i], 
+        window = WINDOW_SIZE,
+        bin_size = BIN_SIZE,
+        colname = paste0("cov_", meta$name[i])
+      )
+      
+      # add correlations
+      gi <- chromloop::applyToCloseGI(
+        gi, 
+        datcol = paste0("cov_", meta$name[i]),
+        fun = cor, 
+        colname = paste0("cor_", meta$name[i])
+      )  
+  
+    }
+  }  
   # Annotae with correlation across TFs -------------------------------------
   
   # get vector with coverage in whole anchor regions
@@ -269,7 +281,7 @@ write_feather(tidyCV, paste0(outPrefix, ".tidyCV.feather"))
 # get design formula for each TF
 designDF <- tibble(
   name = useTF,
-  design = map(useTF, ~as.formula(paste0("loop ~ dist_log10 + strandOrientation + score_min + cor_", .x)) )
+  design = map(useTF, ~as.formula(paste0("loop ~ dist + strandOrientation + score_min + cor_", .x)) )
 )
 
 # expand data.frame to have all combinations of model and split
@@ -294,7 +306,7 @@ cvDF <- cvDF %>%
   mutate(
     tidy_model = map2(Fold, design, .f = tidyer_fitter, 
                       tidyCV = tidyCV, data = df)
-  ) %>% 
+  )%>% 
   # collect results from cluster
   collect()
 
@@ -310,23 +322,22 @@ write_rds(cvDF, path = paste0(outPrefix, "cvDF_trained.rds"))
 #===============================================================================
 
 # add prediction using individual TF specific models
-cvDF <- cvDF %>% 
+cvDFpred <- cvDF %>%
+  partition(name, Fold, cluster = cluster) %>% 
   mutate(
     pred_specificTF = pmap(
       list(
-        map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), 
-        design, 
+        map(Fold, tidy_assessment, data = df, tidyCV = tidyCV),
+        design,
         map(tidy_model, "estimate")
-        ), 
-      pred_logit
-      )
-  )
-
-cvDF <- cvDF %>% 
-  mutate(
+      ),
+      chromloop::pred_logit
+    ),
     label = map(map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), "loop")
-  ) 
+  ) %>% 
+  collect()
 
+# ungroup and get TF as seprate column  
 cvDF <- cvDF %>% 
   ungroup() %>% 
   mutate(TF = str_replace(name, "_lfc", ""))
@@ -376,6 +387,8 @@ ranked_models <- aucDF %>%
   ) %>% 
   arrange(desc(auc_mean)) %>% 
   pull(modnames)
+
+write_rds(ranked_models, paste0(outPrefix, "ranked_models.rds"))
 
 # order aucDF by ranks
 aucDF <- aucDF %>% 
@@ -484,17 +497,24 @@ ggsave(p, file = paste0(outPrefix, ".selected_models.paramter.barplot.pdf"), w =
 # Add predictions
 #-------------------------------------------------------------------------------
 
-# DEBUG prediction using custom model
-# 
-# Rad21mod <- cvDF %>% 
-#   filter(name == "RAD21", id == 1) %>% 
-#   pull(tidy_model)
-# 
-# Rad21mod <- Rad21mod[[1]]
+# Prediction using custom model
+
+Rad21mod <- cvDF %>%
+  filter(TF == "RAD21", id == 1) %>%
+  pull(tidy_model)
+
+Rad21mod <- Rad21mod[[1]]
 
 # defaultDesign <- as.formula("loop ~ dist + strandOrientation + score_min + cor")
+
+# copy object to each cluster node
+cluster <- cluster %>% 
+  cluster_copy(allTfModelDF) %>% 
+  cluster_copy(bestNModelDF) %>% 
+  cluster_copy(Rad21mod)
   
 cvDF <- cvDF %>% 
+  partition(name, Fold, cluster = cluster) %>%
   mutate(
     # add prediction using single TF model
     pred_allTF = map2(
@@ -508,12 +528,13 @@ cvDF <- cvDF %>%
       .y = design, 
       .f = pred_logit,
       betas = bestNModelDF$estimate_mean),
-    # pred_rad21 = map2(
-    #   .x = map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), 
-    #   .y = design, 
-    #   .f = pred_logit,
-    #   betas = Rad21mod$estimate)
-    )
+    pred_rad21 = map2(
+      .x = map(Fold, tidy_assessment, data = df, tidyCV = tidyCV),
+      .y = design,
+      .f = pred_logit,
+      betas = Rad21mod$estimate)
+    ) %>% 
+  collect()
 
 # save with predictions of n best models
 write_rds(cvDF, path = paste0(outPrefix, "cvDF_withPred.rds"))
@@ -525,6 +546,7 @@ write_rds(cvDF, path = paste0(outPrefix, "cvDF_withPred.rds"))
 
 # gather the two differnt prediction types into one colum
 evalDF <- cvDF %>% 
+  ungroup() %>% 
   gather(starts_with("pred_"), key = "pred_type", value = "pred") %>% 
   mutate(
     fold = id,
@@ -613,14 +635,31 @@ p <- ggplot(aucDFmed, aes(x = pred_type, y = aucs_mean, color = pred_type)) +
 
 ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF_and_predType.boxplot.pdf"), w = 7, h = 7)
 
-
-
+#-------------------------------------------------------------------------------
 # get ROC plots
-aucDFroc <- aucDF %>% 
+#-------------------------------------------------------------------------------
+
+# get AUC of ROC and PRC curves for all 
+evalDFsub <- evalDF %>% 
+  mutate(TF = str_split_fixed(modnames, "_", 2)[ ,1]) %>%
+  mutate(type = str_split_fixed(modnames, "_", 2)[ ,2]) %>%
+  filter(TF %in% SELECTED_TF) %>% 
+  filter(type == "specificTF")
+
+curvesSub <- evalmod(
+  scores = evalDFsub$pred,
+  labels = evalDFsub$label,
+  modnames = evalDFsub$modnames,
+  dsids = evalDFsub$fold,
+  posclass = levels(evalDFsub$label[[1]])[2],
+  x_bins = 100)
+
+
+aucDFroc <- auc(curvesSub) %>% 
   filter(curvetypes == "ROC")
 
-g <- autoplot(curves, "ROC") + 
-  scale_color_manual(values = COL_TF,
+g <- autoplot(curvesSub, "ROC", show_cb = TRUE) + 
+  scale_color_manual(values = COL_SELECTED_TF,
                      labels = paste0(
                        aucDFroc$modnames, 
                        ": AUC=", 

@@ -78,9 +78,9 @@ COL_SELECTED_TF = brewer.pal(length(SELECTED_TF), "Set1")
 # setup cluster
 #-------------------------------------------------------------------------------
 
-# # partion data for parallel processing
-# cluster <- create_cluster(N_CORES) %>% 
-#   cluster_library(packages = c("tidyverse")) 
+# partion data for parallel processing
+# cluster <- create_cluster(N_CORES) %>%
+#   cluster_library(packages = c("tidyverse"))
 # 
 # # evaluate help function code on each cluster
 # cluster_eval(cluster, source("R/chromloop.functions.R"))
@@ -221,31 +221,18 @@ if (!GI_LOCAL ) {
 df <- as_tibble(as.data.frame(mcols(gi))) %>%
   mutate(
     id = 1:nrow(.),
-    HIC_ChIAPET_CaptureC = factor(
-      Loop_Tang2015_GM12878 == "Loop" | Loop_Rao_GM12878 == "Loop" | Loop_Mifsud2015_GM12878 == "Loop",
-      c(FALSE, TRUE),
-      c("No loop", "Loop")),
-    HIC_ChIAPET = factor(
+    loop = factor(
       Loop_Tang2015_GM12878 == "Loop" | Loop_Rao_GM12878 == "Loop",
       c(FALSE, TRUE),
       c("No loop", "Loop"))
-  ) 
-
-
-if (TRUE_LOOPS == "HIC_ChIAPET_CaptureC") {
-  df <- df %>% mutate(loop =  HIC_ChIAPET_CaptureC)
-  outPrefix <- str_c(outPrefix, "_HIC_ChIAPET_CaptureC")
-} else {
-  df <- df %>% mutate(loop =  HIC_ChIAPET)
-}
-
-df <- df %>% 
+  ) %>% 
   select(id, loop, everything()) 
 
 # save(df, file = paste0(outPrefix, ".df.Rdata")) 
 write_feather(df, paste0(outPrefix, ".df.feather"))
 # load(paste0(outPrefix, ".df.Rdata"))
 # df <- read_feather(paste0(outPrefix, ".df.feather"))
+
 
 #-------------------------------------------------------------------------------
 # split whole data set into EDA and prediction 
@@ -286,7 +273,7 @@ write_feather(tidyCV, paste0(outPrefix, ".tidyCV.feather"))
 # get design formula for each TF
 designDF <- tibble(
   name = useTF,
-  design = map(useTF, ~as.formula(paste0("loop ~ dist_log + strandOrientation + score_min + cor_", .x)) )
+  design = map(useTF, ~as.formula(paste0("loop ~ dist_log10 + strandOrientation + score_min + cor_", .x)) )
 )
 
 # expand data.frame to have all combinations of model and split
@@ -298,8 +285,13 @@ cvDF <- tidyCV %>%
   mutate(id = parse_integer(str_replace(Fold, "^Fold", "")))
 
 
+# copy object to each cluster node
+cluster <- cluster %>% 
+  cluster_copy(tidyCV) %>% 
+  cluster_copy(df)
+
 # partition data set to clusters
-cvPar <- cvDF %>% 
+cvDF <- cvDF %>% 
   partition(name, Fold, cluster = cluster) %>% 
   # fit model on training part
   # fit model and save estimates in tidy format
