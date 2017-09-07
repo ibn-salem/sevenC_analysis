@@ -22,3 +22,9 @@ SRR2312570	ChIP-nexus	RAD21	qfraq	data/Tang2015/SRR2312570.flexcat_matched_barco
 SRR2312570	ChIP-nexus	RAD21	shifted_reads	data/Tang2015/SRR2312570.flexcat_matched_barcode.fastq.bowtie2.hg19_filtered.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
 SRR2312571	ChIP-nexus	SMC3	qfraq	data/Tang2015/SRR2312571.flexcat_matched_barcode.fastq.bowtie2.hg19_filtered.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
 SRR2312571	ChIP-nexus	SMC3	shifted_reads	data/Tang2015/SRR2312571.flexcat_matched_barcode.fastq.bowtie2.hg19_filtered.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
+ENCFF235BXX	ChIP-seq	SMC3	fold change over control	data/ENCODE/Experiments/ENCFF235BXX.bigWig
+ENCFF000WDH	ChIP-seq	SMC3	qfraq	data/ENCODE/Experiments/ENCFF000WDH.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
+ENCFF000WDH	ChIP-seq	SMC3	shifted_reads	data/ENCODE/Experiments/ENCFF000WDH.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
+ENCFF639ZAX	ChIP-seq	ZNF143	fold change over control	data/ENCODE/Experiments/ENCFF639ZAX.bigWig
+ENCFF360QES	ChIP-seq	ZNF143	qfraq	data/ENCODE/Experiments/ENCFF360QES.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
+ENCFF360QES	ChIP-seq	ZNF143	shifted_reads	data/ENCODE/Experiments/ENCFF360QES.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw

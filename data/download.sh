@@ -160,11 +160,29 @@ head -n 1 ENCODE/files.txt \
 # Rscript R/filter_ENCODE.R
 # cd data
 
+function update_download {
+  URL=$1
+  FILE=ENCODE/Experiments/$(basename $URL)
+
+  if test -e "$FILE"
+  then zflag="-z $FILE"
+  else zflag=
+  fi
+  
+  # echo $zflag
+  curl -o "$FILE" $zflag -L "$URL"  
+}
+export -f update_download
+
+# xargs -P 10 -n 1 update_download < ENCODE/URLs.fcDF.txt
+cat ENCODE/URLs.fcDF.txt | parallel -j 10 update_download
+
 mkdir -p ENCODE/Experiments
 cd ENCODE/Experiments 
 xargs -n 1 curl -O -L < ../URLs.flt.txt
 xargs -P 10 -n 1 curl -O -L < ../URLs.fltOuttype.txt
-xargs -P 10 -n 1 curl -O -L < ../URLs.fcDF.txt
+# xargs -P 10 -n 1 curl -O -L < ../URLs.fcDF.txt
+
 xargs -P 10 -n 1 curl -O -L < ../URLs.fltBam.txt
 
 cd ../..

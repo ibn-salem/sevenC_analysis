@@ -31,12 +31,12 @@ tidyer_fitter <- function(fold, formula, data, tidyCV, ...) {
   
   # extract row indices 
   rows <- tidyCV %>% 
-    filter(Data == "Analysis" & Fold == fold) %>% 
+    dplyr::filter(Data == "Analysis" & Fold == fold) %>% 
     pull("Row")
   
   # fit glm model only only the subset of rows in data
   mod <- glm(formula = formula, 
-             data = slice(data, rows), 
+             data = dplyr::slice(data, rows), 
              family = binomial(),
              model = FALSE,  
              x = FALSE,
@@ -61,11 +61,11 @@ tidy_assessment <- function(fold, data, tidyCV){
   
   # extract row indices 
   rows <- tidyCV %>% 
-    filter(Data == "Assessment" & Fold == fold) %>% 
-    pull("Row")
+    dplyr::filter(Data == "Assessment" & Fold == fold) %>% 
+    dplyr::pull("Row")
   
   # return subset of data
-  return(slice(data, rows))
+  return(dplyr::slice(data, rows))
 }
 
 
