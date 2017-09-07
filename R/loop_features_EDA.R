@@ -9,8 +9,6 @@ require(stringr)      # for string functions
 require(RColorBrewer)   # for nice colors
 require(feather)      # for efficient storing of data.frames
 
-source("R/chromloop.functions.R")
-
 
 # 0) Set parameter --------------------------------------------------------
 
@@ -20,10 +18,6 @@ MIN_MOTIF_SIG <- 6
 WINDOW_SIZE <- 1000
 BIN_SIZE <- 1
 
-COL_TF <- grDevices::colors()[str_detect(grDevices::colors(), "^((?!(gr(a|e)y|white)).)*[^\\d]$")]
-COL_TF <- COL_TF[!COL_TF %in% c("white", "black", "aliceblue", "azure", "beige", "bisque", "cornsilk", "cyan", "darkorchid", "coral", "darkmagenta")]
-# pie(rep(1, length(COL_TF)), col = COL_TF, labels = COL_TF, main = length(COL_TF))
-# COL_TF = colorRamps::primary.colors(124)
 
 COL_LOOP = brewer.pal(8, "Dark2")[c(8,5)] #[c(2,1,5,6)]
 names(COL_LOOP) <- c("No loop", "Loop")
@@ -35,19 +29,21 @@ outPrefix <- file.path("results", paste0("v03_screen_TF_qfraq.",
 
 dir.create(dirname(outPrefix), showWarnings = FALSE)
 
-
 # metadata file
-metaFile <- "data/ENCODE/metadata.fltBam.tsv"
+metaFile <- "data/ENCODE/metadata.fcDF.tsv"
 
 SELECTED_TF <- c(
   "RAD21",
-  "SMC3",
   "CTCF",
   "ZNF143",
   "STAT1",
-  "STAT3",
-  "NFYB"
+  "EP300",
+  "POLR2A"
 )
+
+COL_SELECTED_TF = brewer.pal(length(SELECTED_TF), "Set1")
+COL_SELECTED_TF_1 = brewer.pal(12, "Paired")[c(1, 3, 5, 7, 9, 11)]
+COL_SELECTED_TF_2 = brewer.pal(12, "Paired")[c(2, 4, 6, 8, 10, 12)]
 
 #-------------------------------------------------------------------------------
 # Parse and filter input ChiP-seq data  -----------------------------------
