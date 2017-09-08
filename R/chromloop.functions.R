@@ -69,4 +69,32 @@ tidy_assessment <- function(fold, data, tidyCV){
 }
 
 
+#' Write interactions as long-range text file format.
+#'
+#'
+#' The WashU EpiGenome Browser can visuallize chromaint interactions along other
+#' genomic features. The format of the file format is described here:
+#' http://wiki.wubrowse.org/Long-range
+#'
+#' @param gi
+#' @param score Name of a score column in \code{gi}.
+#' @param output_file Path to output file.
+#'   
+writeLongRangeFormat <- function(gi, score, output_file){
+  
+  gr1 <- anchors(gi, "first")
+  gr2 <- anchors(gi, "second")
+  socreVec <- mcols(gi)[, score]
+  
+  str1 <- paste(seqnames(gr1), start(gr1), end(gr1), sep = ",")
+  str2 <- paste(seqnames(gr2), start(gr2), end(gr2), sep = ",")
+  
+  outDF <- data.frame(
+    gr1 = str1, 
+    gr2 = str2, 
+    score = socreVec)
+  
+  write_tsv(outDF, path = output_path, col_names = FALSE)
+}
+
 
