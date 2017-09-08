@@ -14,6 +14,7 @@ require(rsample)
 require(pryr) # for object_size()
 require(feather)      # for efficient storing of data.frames
 require(multidplyr)   # for partition() and collect() to work in parallel
+require(ROCR)         # for binary clasification metrices
 
 source("R/chromloop.functions.R")
 
@@ -429,7 +430,6 @@ ggsave(g, file= paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
 -------------------------------------------------------------------------------
 # Binary prediction
 #-------------------------------------------------------------------------------
-require("ROCR")
 
 evalDF <- cvDF %>% 
   select(name, id, pred_allTF, label) %>%
