@@ -423,6 +423,25 @@ write_feather(aucDF, paste0(outPrefix, "aucDF_specificTF.feather"))
 #-------------------------------------------------------------------------------
 # Take parameters from best N models
 #-------------------------------------------------------------------------------
+TFspecific_ModelDF <- cvDF %>%
+  ungroup() %>% 
+  mutate(TF = str_replace(name, "_lfc", "")) %>% 
+  select(TF, id, tidy_model) %>%
+  unnest(tidy_model) %>% 
+  # rename cor_* terms to only cor
+  mutate(term = str_replace(term, "^cor_.*", "cor")) %>% 
+  mutate(term = factor(term, unique(term))) %>% 
+  group_by(TF, term) %>% 
+  summarize(
+    estimate_mean = mean(estimate, na.rm = TRUE),
+    estimate_median = median(estimate, na.rm = TRUE),
+    estimate_sd = sd(estimate, na.rm = TRUE)
+  ) %>% 
+  mutate(term = parse_character(term))
+
+write_tsv(TFspecific_ModelDF, paste0(outPrefix, ".TFspecific_ModelDF.tsv"))
+
+
 
 # take mean/meidan of estimates across TFs and folds
 allTfModelDF <- cvDF %>% 
