@@ -36,7 +36,7 @@ TRUE_LOOPS <- "HIC_ChIAPET"
 # COL_TF = c(colorRampPalette(brewer.pal(8, "Set1"))(9), "#80da3a")
 # COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray70", "gray50", "gray30")
 COL_TF <- grDevices::colors()[str_detect(grDevices::colors(), "^((?!(gr(a|e)y|white)).)*[^\\d]$")]
-COL_TF <- COL_TF[!COL_TF %in% c("white", "black", "aliceblue", "azure", "beige", "bisque", "cornsilk", "cyan", "darkorchid", "coral", "darkmagenta")]
+# COL_TF <- COL_TF[!COL_TF %in% c("white", "black", "aliceblue", "azure", "beige", "bisque", "cornsilk", "cyan", "darkorchid", "coral", "darkmagenta")]
 # pie(rep(1, length(COL_TF)), col = COL_TF, labels = COL_TF, main = length(COL_TF))
 # COL_TF = colorRamps::primary.colors(124)
 
@@ -64,17 +64,6 @@ LoopTang2015_GM12878_Files <- c(
 # metaFile <- "data/ENCODE/metadata.fltBam.tsv"
 metaFile <- "data/ENCODE/metadata.fcDF.tsv"
 
-# SELECTED_TF <- c(
-#   "RAD21",
-#   "SMC3",
-#   "CTCF",
-#   "ZNF143",
-#   "STAT1",
-#   "STAT3",
-#   "NFYB"
-# )
-
-
 SELECTED_TF <- c(
   "RAD21",
   "CTCF",
@@ -85,6 +74,10 @@ SELECTED_TF <- c(
 )
 
 COL_SELECTED_TF = brewer.pal(length(SELECTED_TF), "Set1")
+COL_SELECTED_TF_1 = brewer.pal(12, "Paired")[c(1, 3, 5, 7, 9, 11)]
+COL_SELECTED_TF_2 = brewer.pal(12, "Paired")[c(2, 4, 6, 8, 10, 12)]
+names(COL_SELECTED_TF_1) <- SELECTED_TF
+names(COL_SELECTED_TF_2) <- SELECTED_TF
 
 #-------------------------------------------------------------------------------
 # setup cluster
@@ -121,6 +114,10 @@ meta <- meta %>%
   mutate(name = paste0(TF, "_lfc")) %>%
   select(TF, name, filePath, everything())
 
+# adapte colors
+COL_TF <- COL_TF[1:nrow(meta)]
+names(COL_TF) <- meta$TF
+COL_TF[match(SELECTED_TF, names(COL_TF))] <- COL_SELECTED_TF_2
 # meta <- meta[1:3, ]
 
 # Select motifs and parse input data -----------------------------------
@@ -598,7 +595,7 @@ aucDF <- as_tibble(auc(curves)) %>%
   mutate(name = factor(name, ranked_models))
 
 write_feather(aucDF, paste0(outPrefix, "aucDF.feather"))
-
+# aucDF <- read_feather(paste0(outPrefix, "aucDF.feather"))
 
 # build color vector with TFs as names
 # COL_TF <- COL_TF[seq(1, length(ranked_models))]
@@ -658,6 +655,59 @@ p <- ggplot(aucDFmed, aes(x = pred_type, y = aucs_mean, fill = pred_type)) +
   labs(x = "Models", y = "AUC")
 
 ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF_and_predType.boxplot.pdf"), w = 7, h = 7)
+
+
+#-------------------------------------------------------------------------------
+# Barplot of AUC for only specific model
+#-------------------------------------------------------------------------------
+# aucDF <- read_feather(paste0(outPrefix, "aucDF.feather"))
+
+# build color vector with TFs as names
+# COL_TF <- COL_TF[seq(1, length(ranked_models))]
+# names(COL_TF) <- ranked_models
+
+aucDFcombined <- aucDF %>%
+  # take only the prediction value of the TF specific model
+  filter(pred_type == "specificTF") %>% 
+  group_by(name, curvetypes) %>% 
+  summarize(
+    aucs_median = median(aucs, na.rm = TRUE),
+    aucs_mean = mean(aucs, na.rm = TRUE),
+    aucs_sd = sd(aucs, na.rm = TRUE)
+  )
+  
+#-------------------------------------------------------------------------------
+# barplot of AUCs of ROC and PRC
+#-------------------------------------------------------------------------------
+p <- ggplot(aucDFcombined, aes(x = name, y = aucs_mean, 
+                          ymin = aucs_mean - aucs_sd, ymax = aucs_mean + aucs_sd, 
+                          fill = name)) +
+  geom_bar(stat = "identity") +
+  geom_errorbar(width = .25) + 
+  # geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), size = 3, hjust = 1, angle = 90, position = position_dodge(width = 1)) +
+  facet_grid(curvetypes ~ ., scales = "free") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "none") +
+  scale_fill_manual(values = COL_TF) +
+  labs(x = "TF", y = "AUC")
+
+ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot.pdf"), w = 14, h = 7)
+
+# only PRC AUC
+prcDF <- aucDFcombined %>% 
+  filter(curvetypes == "PRC")
+
+p <- ggplot(prcDF, aes(x = name, y = aucs_mean, 
+                               ymin = aucs_mean - aucs_sd, ymax = aucs_mean + aucs_sd, 
+                               fill = name)) +
+  geom_bar(stat = "identity") +
+  geom_errorbar(width = .25) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 8), legend.position = "none") +
+  scale_fill_manual(values = COL_TF) +
+  labs(x = "", y = "Prediction perfromance\n(AUC PRC)")
+
+ggsave(p, file = paste0(outPrefix, ".AUC_PRC.by_TF.barplot.pdf"), w = 14, h = 3.5)
 
 
 #===============================================================================
