@@ -62,6 +62,9 @@ SELECTED_TF <- c(
 COL_SELECTED_TF = brewer.pal(length(SELECTED_TF), "Set1")
 COL_SELECTED_TF_1 = brewer.pal(12, "Paired")[c(1, 3, 5, 7, 9, 11)]
 COL_SELECTED_TF_2 = brewer.pal(12, "Paired")[c(2, 4, 6, 8, 10, 12)]
+names(COL_SELECTED_TF_1) <- SELECTED_TF
+names(COL_SELECTED_TF_2) <- SELECTED_TF
+
 #-------------------------------------------------------------------------------
 # setup cluster
 #-------------------------------------------------------------------------------
