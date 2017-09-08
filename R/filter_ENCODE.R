@@ -233,6 +233,43 @@ fcDF %>%
     path = file.path("data", "ENCODE", "URLs.fcDF.txt"),
     col_names = FALSE)
 
+
+#-------------------------------------------------------------------------------
+# HeLa fold-change data
+#-------------------------------------------------------------------------------
+fcHelaDF <- meta %>%
+  filter(`File format` == "bigWig") %>% 
+  filter(Assembly == "hg19") %>% 
+  filter(`Biosample term name` == "HeLa-S3") %>% 
+  # filter for output type "fold change" with 2 replicates or "signal" 
+  filter(`Output type` %in% c("fold change over control", "signal")) %>% 
+  filter(file_nrep == 2 | `Output type` == "signal") %>%
+  # reorder rows to prefere "fold change over control" for each TF in distinct()
+  mutate(output_type = factor(`Output type`, c("fold change over control", "signal"))) %>% 
+  arrange(TF, output_type) %>% 
+  # take only a unique data set per TF
+  distinct(TF, .keep_all = TRUE) %>% 
+  # annotte with TF selection and file path
+  mutate(usedTF = TF %in% useTFs) %>%
+  mutate(filePath = file.path("data", "ENCODE", "Experiments", basename(`File download URL`))) %>% 
+  select(`File accession`, TF, output_type, usedTF, filePath, file_nrep, Lab, everything())
+
+fcHelaDFselected <- fcHelaDF %>%
+  filter(usedTF)
+# count(`Biosample term name`)
+
+fcHelaDFselected %>%
+  select(-rep) %>%
+  write_tsv(path = file.path("data", "ENCODE", "metadata.fc_HELA_selected.tsv"))
+
+fcHelaDFselected %>% 
+  select(`File download URL`) %>%
+  write_tsv(
+    path = file.path("data", "ENCODE", "URLs.fc_HELA_selected.txt"),
+    col_names = FALSE)
+
+
+
 #-------------------------------------------------------------------------------
 # get BAM files
 #-------------------------------------------------------------------------------

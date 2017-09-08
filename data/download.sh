@@ -152,8 +152,7 @@ wget -O ENCODE/files.txt https://www.encodeproject.org/batch_download/type%3DExp
 wget -O ENCODE/report.tsv "https://www.encodeproject.org/report.tsv?type=Experiment&assay_title=ChIP-seq&assembly=hg19&target.investigated_as=transcription+factor&files.file_type=bigWig&files.file_type=bam"
 
 # download only metadata.tsv file (with first link in files.txt)
-head -n 1 ENCODE/files.txt \
-| wget -O ENCODE/metadata.tsv -i -
+head -n 1 ENCODE/files.txt | wget -O ENCODE/metadata.tsv -i -
 
 # filter by metadata using R scirpt
 # cd ..
@@ -176,6 +175,8 @@ export -f update_download
 
 # xargs -P 10 -n 1 update_download < ENCODE/URLs.fcDF.txt
 cat ENCODE/URLs.fcDF.txt | parallel -j 10 update_download
+
+cat ENCODE/URLs.fc_HELA_selected.txt | parallel -j 1 --no-notice update_download
 
 mkdir -p ENCODE/Experiments
 cd ENCODE/Experiments 
