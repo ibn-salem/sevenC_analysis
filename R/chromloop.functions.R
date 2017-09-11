@@ -80,21 +80,21 @@ tidy_assessment <- function(fold, data, tidyCV){
 #' @param score Name of a score column in \code{gi}.
 #' @param output_file Path to output file.
 #'   
-writeLongRangeFormat <- function(gi, score, output_file){
+writeLongRangeFormat <- function(gi, score_vec, output_file){
   
   gr1 <- anchors(gi, "first")
   gr2 <- anchors(gi, "second")
-  socreVec <- mcols(gi)[, score]
+  # score_vec <- mcols(gi)[, score]
   
-  str1 <- paste(seqnames(gr1), start(gr1), end(gr1), sep = ",")
-  str2 <- paste(seqnames(gr2), start(gr2), end(gr2), sep = ",")
+  str1 <- str_c(seqnames(gr1), start(gr1), end(gr1), sep = ",")
+  str2 <- str_c(seqnames(gr2), start(gr2), end(gr2), sep = ",")
   
-  outDF <- data.frame(
+  outDF <- tibble(
     gr1 = str1, 
     gr2 = str2, 
-    score = socreVec)
+    score = score_vec)
   
-  write_tsv(outDF, path = output_path, col_names = FALSE)
+  write_tsv(outDF, path = output_file, col_names = FALSE)
 }
 
 

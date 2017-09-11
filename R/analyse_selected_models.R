@@ -31,6 +31,12 @@ BIN_SIZE <- 1
 K = 10  # K-fold corss validation
 N_TOP_MODELS = 10
 
+lfcPrefix <- file.path("results", paste0("v04_screen_TF_lfc.", 
+                                         paste0("motifSig", MIN_MOTIF_SIG), 
+                                         "_w", WINDOW_SIZE, 
+                                         "_b", BIN_SIZE))
+
+
 outPrefix <- file.path("results", paste0("v04_selected_models.", 
                                          paste0("motifSig", MIN_MOTIF_SIG), 
                                          "_w", WINDOW_SIZE, 
@@ -102,6 +108,9 @@ meta <- meta %>%
   # mutate(name = paste0(TF, "_lfc")) %>%
   mutate(name = TF) %>%
   select(TF, name, filePath, everything())
+
+
+write_tsv(meta, paste0(outPrefix, ".meta.tsv"))
 
 # meta <- meta[1:3, ]
 
@@ -306,6 +315,7 @@ cvDF <- cvDF %>%
 write_rds(cvDF, path = paste0(outPrefix, "cvDF.rds"))
 # cvDF <- read_rds(paste0(outPrefix, "cvDF.rds"))
 
+# gi <- read_rds(paste0(outPrefix, ".gi.rds"))
 # df <- read_feather(paste0(outPrefix, ".df.feather"))
 # tidyCV <- read_feather(paste0(outPrefix, ".tidyCV.feather"))
 # cvDF <- read_rds(paste0(outPrefix, "cvDF.rds"))
@@ -506,6 +516,84 @@ topNf1ModelDF <- f1ModelDF %>%
   )
 
 write_tsv(topNf1ModelDF, paste0(outPrefix, ".topNf1ModelDF.tsv"))  
+
+#===============================================================================
+# Output motifs and interactios for genome broser
+#===============================================================================
+
+# output motifs as bed file
+names(regions(gi)) <- rep("CTCF", length(regions(gi)))
+score(regions(gi)) <- regions(gi)$sig
+rtracklayer::export.bed(regions(gi), paste0(outPrefix, ".motifs.bed"))
+
+#-------------------------------------------------------------------------------
+# output interactions
+#-------------------------------------------------------------------------------
+# mcols(gi) < df
+# outGI <- gi
+# mcols(outGI)[, "out_score"] <- ifelse(df$loop == "Loop", 1, 0)
+
+
+# parse average model of 10-fold CV for RAD21
+Rad21_model <- read_tsv(paste0(lfcPrefix, ".TFspecific_ModelDF.tsv")) %>% 
+  filter(TF == "RAD21") %>% 
+  pull(estimate_mean)
+
+mcols(gi)$loop <- df$loop
+
+# add predictions using RAD21 model
+mcols(gi)$pred_Rad21 <- pred_logit(
+  df, 
+  as.formula("loop ~ dist + strandOrientation + score_min + cor_RAD21"),
+  Rad21_model)
+
+Rad21_cutof <- read_rds(paste0(lfcPrefix, ".f1ModelDF.rds")) %>% 
+  filter(TF == "RAD21") %>% 
+  pull(max_cutoff)
+
+# add binary predictions
+mcols(gi)$predBinary_Rad21 <- mcols(gi)$pred_Rad21 >= Rad21_cutof
+    
+# chr22 <- GRanges(seqinfo(gi))["chr22"]
+# subGI <- subsetByOverlaps(gi, chr22, ignore.strand = TRUE)
+
+# write all chr22 pairs (with labeld true ones)
+writeLongRangeFormat(
+  gi = subGI, 
+  score_vec = ifelse(mcols(subGI)$loop == "Loop", 1, -1), 
+  output_file = paste0(outPrefix, ".gi.loop.chr22.longrange.txt")
+  )
+
+# write all chr22 pairs (with labeld predictions)
+writeLongRangeFormat(
+  gi = subGI, 
+  score_vec = ifelse(mcols(subGI)$predBinary_Rad21, 1, -1), 
+  output_file = paste0(outPrefix, ".gi.pred_Rad21.chr22.longrange.txt")
+)
+
+# write only subset of interacting pairs
+loopGI <- gi[gi$loop == "Loop"]
+writeLongRangeFormat(
+  gi = loopGI, 
+  score_vec = rep(1, length(loopGI)), 
+  output_file = paste0(outPrefix, ".gi.loop_sub.longrange.txt")
+)
+
+# write only subset of predicted loops
+rad21GI <- gi[!is.na(gi$predBinary_Rad21) & gi$predBinary_Rad21]
+writeLongRangeFormat(
+  gi = rad21GI, 
+  score_vec = rad21GI$pred_Rad21, 
+  output_file = paste0(outPrefix, ".gi.pred_Rad21_sub.longrange.txt")
+)
+
+
+# write all pairs (with labeld true ones)
+writeLongRangeFormat(
+  gi = gi, 
+  score_vec = ifelse(mcols(gi)$loop == "Loop", 1, -1), 
+  output_file = paste0(outPrefix, ".gi.loop.longrange.txt")
+)
 
 
 #===============================================================================

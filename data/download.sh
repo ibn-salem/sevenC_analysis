@@ -410,6 +410,13 @@ make
 make install
 
 #=======================================================================
+# get tabix
+#=======================================================================
+wget -P ${BIN} https://sourceforge.net/projects/samtools/files/tabix/tabix-0.2.6.tar.bz2
+tar jxvf ${BIN}/tabix-0.2.6.tar.bz2 -C ${BIN}
+cd ${BIN}/tabix-0.2.6
+make
+#=======================================================================
 # get fastqc
 #=======================================================================
 wget -P ${BIN} https://www.bioinformatics.babraham.ac.uk/projects/fastqc/fastqc_v0.11.5.zip
