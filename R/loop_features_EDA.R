@@ -298,10 +298,15 @@ rand_examples = c(
   sample(which(bothSupport), N_EXAMPLE),
   sample(which(bothNoSupport), N_EXAMPLE)
 )
+
+rand_examples = c(
+  357242, 16818, 379220,
+  214045, 69243, 163948
+)
 write_rds(rand_examples, paste0(outPrefix, ".rand_examples.rds"))
 
-# Loop examples : 357242
-# No Loop example : 214045
+# Loop examples : 357242, 16818, 452694, 379220
+# No Loop example : 214045, 69243, 163948
 
 cov_up <- covList[anchors(gi[rand_examples], type = "first", id = TRUE)]
 cov_down <- covList[anchors(gi[rand_examples], type = "second", id = TRUE)]
@@ -312,10 +317,10 @@ covDF <- tibble(
     reg = c(1:N_EXAMPLE, 1:N_EXAMPLE),
     cov_up = as.list(cov_up),
     cov_down = as.list(cov_down),
-  ) %>% 
-  gather(key = "anchor", value = "cov", cov_up, cov_down) %>% 
-  mutate(anchor = str_replace(anchor, "cov_", "")) %>% 
-  unnest(cov) %>% 
+  ) %>%
+  gather(key = "anchor", value = "cov", cov_up, cov_down) %>%
+  mutate(anchor = str_replace(anchor, "cov_", "")) %>%
+  unnest(cov) %>%
   mutate(pos = rep(1:WINDOW_SIZE, n()/WINDOW_SIZE) - WINDOW_SIZE/2)
 
 write_feather(covDF, paste0(outPrefix, ".6_random_pairs.feather"))
@@ -325,15 +330,12 @@ write_feather(covDF, paste0(outPrefix, ".6_random_pairs.feather"))
 p = ggplot(covDF, aes(x = pos, fill = anchor)) +
   geom_ribbon(aes(ymin = 0, ymax = cov)) +
   facet_grid(reg ~ loop, scales = "free_y") +
-  theme_bw() + 
-  theme(text = element_text(size = 20), 
-        axis.text.x = element_text(angle = 45, hjust = 1), 
-        strip.text.y = element_blank()) + 
+  theme_bw() +
+  theme(text = element_text(size = 20),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.text.y = element_blank()) +
   labs(y = paste(FACT, "ChIP-seq"), x = "Positions around CTCF motif") +
-  scale_fill_manual(values = alpha(COL_ANCHOR, 0.5)) 
-# + 
-  # coord_cartesian(ylim = c(0,8*mean(factDF$signal)))
-# p
+  scale_fill_manual(values = alpha(COL_ANCHOR, 0.5))
 ggsave(p, file = paste0(outPrefix, ".6_random_pairs.pdf"), w = 7, h = 7)
 
 #---------------------plot only two pairs sites ------------------------
@@ -370,7 +372,6 @@ p = ggplot(factAncDF, aes(x = up, y = down, color = pos)) +
   # scale_color_gradient2(low = "grey", mid = scales::muted("blue"), high = "gray")
   # scale_color_gradientn(colors = RColorBrewer::brewer.pal(3, "BrBG"))
   scale_color_gradientn(colors = colorspace::rainbow_hcl(20))
-
 ggsave(p, file = paste0(outPrefix, ".6_random_pairs.cor.pdf"), w = 7, h = 7)
 
 subAncDF <- filter(factAncDF, reg == 1)
