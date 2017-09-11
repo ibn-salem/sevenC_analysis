@@ -14,6 +14,8 @@ require(rsample)
 require(pryr) # for object_size()
 require(feather)      # for efficient storing of data.frames
 require(multidplyr)   # for partition() and collect() to work in parallel
+require(ROCR)         # for binary clasification scores
+
 
 source("R/chromloop.functions.R")
 
@@ -729,80 +731,36 @@ p <- ggplot(prcDF, aes(x = name, y = aucs_mean,
 ggsave(p, file = paste0(outPrefix, ".AUC_PRC.by_TF.barplot.pdf"), w = 14, h = 3.5)
 
 
-#===============================================================================
-# TODO: Did run it only until here.
-#===============================================================================
-stop("Stop here!")
-
-#-------------------------------------------------------------------------------
-# get ROC plots
-#-------------------------------------------------------------------------------
-
-# get AUC of ROC and PRC curves for all 
-evalDFsub <- evalDF %>% 
-  mutate(TF = str_split_fixed(modnames, "_", 2)[ ,1]) %>%
-  mutate(type = str_split_fixed(modnames, "_", 2)[ ,2]) %>%
-  filter(TF %in% SELECTED_TF) %>% 
-  filter(type == "specificTF")
-
-curvesSub <- evalmod(
-  scores = evalDFsub$pred,
-  labels = evalDFsub$label,
-  modnames = evalDFsub$modnames,
-  dsids = evalDFsub$fold,
-  posclass = levels(evalDFsub$label[[1]])[2],
-  x_bins = 100)
-
-
-aucDFroc <- auc(curvesSub) %>% 
-  filter(curvetypes == "ROC")
-
-g <- autoplot(curvesSub, "ROC", show_cb = TRUE) + 
-  scale_color_manual(values = COL_SELECTED_TF,
-                     labels = paste0(
-                       aucDFroc$modnames, 
-                       ": AUC=", 
-                       signif(aucDFroc$aucs,3)
-                     ),
-                     guide = guide_legend(
-                       override.aes = list(size = 2),
-                       reverse = TRUE)
-  ) + 
-  theme(legend.position = c(.75,.4))
-
-# g
-ggsave(g, file= paste0(outPrefix, ".selectedTF_specificTF.ROC.pdf"), w = 5, h = 5)
-
-# get PRC plots
-aucDFprc <- aucDF %>% 
-  filter(curvetypes == "PRC")
-
-g <- autoplot(curves, "PRC", size = 4) +
-  scale_color_manual(values = COL_TF,
-                     labels = paste0(
-                       aucDFprc$modnames, 
-                       ": AUC=", 
-                       signif(aucDFprc$aucs,3)),
-                     guide = guide_legend(override.aes = list(size = 2),
-                                          reverse = TRUE)) +
-  # theme(legend.position=c(.75,.6))
-  theme(legend.position = "none")
-# g
-ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
 
 #-------------------------------------------------------------------------------
 # Binary prediction
 #-------------------------------------------------------------------------------
-require("ROCR")
 
-evalDF <- cvDF %>% 
+evalDF <- cvDF %>%
+  ungroup() %>% 
   select(name, id, pred_allTF, label) %>%
   # filter(name %in% SELECTED_TF) %>% 
   filter(id == 1)
 
+# combine CV folds 
+predDF <- cvDF %>% 
+  ungroup() %>% 
+  # filter(TF %in% c("RAD21", "CTCF", "STAT1")) %>% 
+  select(TF, id, label, pred_specificTF, pred_allTF, pred_bestNTF) %>% 
+  unnest(label, pred_specificTF, pred_allTF, pred_bestNTF) %>% 
+  group_by(TF) %>% 
+  summarize(
+    label = list(label),
+    pred_specificTF = list(pred_specificTF),
+    pred_allTF = list(pred_allTF),
+    pred_bestNTF = list(pred_bestNTF)
+  )
 
+write_rds(predDF, paste0(outPrefix, ".predDF.rds"))
+
+  
 # get prediction object with measurements
-predObj <- ROCR::prediction(evalDF$pred_allTF, evalDF$label, levels(evalDF$label[[1]]))
+predObj <- ROCR::prediction(predDF$pred_specificTF, predDF$label, levels(predDF$label[[1]]))
 perfObj <- ROCR::performance(predObj, measure = "f")
 
 # get cutoff and f1-score for each model as lists
@@ -818,26 +776,32 @@ f1_List <- slot(perfObj, "y.values")
 f1DF <- tibble(
   cutoff = unlist(cutoff_List),
   f1_score = unlist(f1_List),
-  name = rep(evalDF$name, times = map_int(slot(perfObj, "x.values"), length))
+  TF = rep(predDF$TF, times = map_int(slot(perfObj, "x.values"), length))
 )
 
-p <- ggplot(f1DF, aes(x = cutoff, y = f1_score, color = name)) +
-  geom_line() +
-  theme_bw() + theme(legend.position = "none") 
-ggsave(p, file = paste0(outPrefix, ".allTF.pred_allTF.f1-score_vs_cutoff.pdf"), w = 5, h = 5)
+write_feather(f1DF, paste0(outPrefix, ".f1DF.feather"))
+
+# p <- f1DF %>% 
+#   filter(TF %in% SELECTED_TF) %>% 
+#   ggplot(aes(x = cutoff, y = f1_score, color = TF)) +
+#   geom_line() +
+#   theme_bw() + theme(legend.position = "right") +
+#   scale_color_manual(values = COL_SELECTED_TF_2)
+# 
+# ggsave(p, file = paste0(outPrefix, ".allTF.pred_specificTF.f1-score_vs_cutoff.selectedTF.pdf"), w = 5, h = 5)
 
 # plot curve only for selected TFs
-p <- ggplot(filter(f1DF, name %in% SELECTED_TF), aes(x = cutoff, y = f1_score, color = name)) +
+p <- ggplot(filter(f1DF, TF %in% SELECTED_TF), aes(x = cutoff, y = f1_score, color = TF)) +
   geom_line() +
   theme_bw() + theme(legend.position = "bottom") + 
-  scale_color_manual(values = COL_SELECTED_TF)
+  scale_color_manual(values = COL_SELECTED_TF_2)
 ggsave(p, file = paste0(outPrefix, ".selectedTF.pred_allTF.f1-score_vs_cutoff.pdf"), w = 5, h = 5)
 
 #-------------------------------------------------------------------------------
 # get cutoff with maximal f1-score
 #-------------------------------------------------------------------------------
 
-f1ModelDF <- evalDF %>% 
+f1ModelDF <- predDF %>% 
   mutate(
     cutoffs = cutoff_List,
     f1_score = f1_List,
@@ -845,24 +809,24 @@ f1ModelDF <- evalDF %>%
     max_cutoff = map2_dbl(cutoffs, max_idx, ~ .x[[.y]]),
     max_f1 = map2_dbl(f1_score, max_idx, ~ .x[[.y]])
   ) %>% 
-  select(name, max_idx, max_cutoff, max_f1)
+  select(TF, max_idx, max_cutoff, max_f1)
 
 write_rds(f1ModelDF, paste0(outPrefix, ".f1ModelDF.rds"))  
 write_tsv(f1ModelDF, paste0(outPrefix, ".f1ModelDF.tsv"))  
 
-allTFf1ModelDF <- f1ModelDF %>% 
+specificTFf1ModelDF <- f1ModelDF %>% 
   summarize(
     mean_max_cutoff = mean(max_cutoff, na.rm = TRUE),
     median_max_cutoff = median(max_cutoff, na.rm = TRUE),
     sd_max_cutoff = sd(max_cutoff, na.rm = TRUE)
   )
-write_tsv(allTFf1ModelDF, paste0(outPrefix, ".f1ModelDF.tsv"))  
+write_tsv(allTFf1ModelDF, paste0(outPrefix, ".specificTFf1ModelDF.tsv"))  
 
 # output the mean of the top N models
 ranked_models <- levels(aucDF$modnames)[1:10]
 
 topNf1ModelDF <- f1ModelDF %>% 
-  filter(name %in% ranked_models) %>% 
+  filter(TF %in% ranked_models) %>% 
   summarize(
     mean_max_cutoff = mean(max_cutoff, na.rm = TRUE),
     median_max_cutoff = median(max_cutoff, na.rm = TRUE),
