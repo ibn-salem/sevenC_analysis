@@ -343,6 +343,7 @@ curves <- evalmod(
   x_bins = 100)
 
 write_rds(curves, paste0(outPrefix, ".curves.rds"))
+# curves <- read_rds(paste0(outPrefix, ".curves.rds"))
 
 # get data.frame with auc values
 aucDF <-  as_tibble(auc(curves)) %>% 
@@ -368,7 +369,7 @@ p <- ggplot(aucDFmed, aes(x = modnames, y = aucs_mean, fill = modnames)) +
   geom_bar(stat = "identity", position = "dodge") +
   geom_errorbar(aes(ymin = aucs_mean - aucs_sd, ymax = aucs_mean + aucs_sd),
                 width = .25, position = position_dodge(width = 1)) + 
-  # geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), size = 3, hjust = 1, angle = 90, position = position_dodge(width = 1)) +
+  geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), size = 3, vjust = 1.5) +
   facet_grid(curvetypes ~ ., scales = "free") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "none") +
@@ -428,7 +429,7 @@ for (subStr in names(subsetList)){
   g <- ggplot(rocDF, aes(x = x, y = y, color = modname)) +
     geom_line() +
     geom_abline(intercept = 0, slope = 1, lty = "dotted") +
-    theme_bw() + theme(aspect.ratio=1) +
+    theme_bw() + theme(aspect.ratio = 1) +
     labs(x = "1 - Specificity", y = "Sensitivity") +
     scale_color_manual("",
                        values = designDF$color,
@@ -438,8 +439,7 @@ for (subStr in names(subsetList)){
                          signif(aucDFroc$aucs_mean,3)
                        ),
                        guide = guide_legend(
-                         override.aes = list(size = 2),
-                         reverse = TRUE)
+                         override.aes = list(size = 2))
     ) +
     theme(text = element_text(size = 15), legend.position = c(.7,.4),
           legend.background = element_rect(fill = alpha('white', 0.1)))
@@ -462,17 +462,8 @@ for (subStr in names(subsetList)){
     geom_abline(intercept = prc_base, slope = 0, lty = "dotted") +
     theme_bw() + theme(aspect.ratio=1) +
     labs(x = "Recall", y = "Precision") +
-    scale_color_manual(values = designDF$color,
-                       labels = paste0(
-                         aucDFroc$modnames, 
-                         ": AUC=", 
-                         signif(aucDFprc$aucs_mean,3)
-                       ),
-                       guide = guide_legend(
-                         override.aes = list(size = 2),
-                         reverse = TRUE)
-    # ) + theme(legend.position = c(.75,.4))
-    ) + theme(text = element_text(size = 15), legend.position = "none") +
+    scale_color_manual(values = designDF$color) + 
+    theme(text = element_text(size = 15), legend.position = "none") +
     ylim(0, 1)
   
   ggsave(g, file = paste0(outPrefix, ".", subStr, ".PRC.pdf"), w = 5, h = 5)
