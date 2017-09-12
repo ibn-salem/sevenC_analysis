@@ -45,7 +45,7 @@ COL_SELECTED_TF = brewer.pal(12, "Paired")
 COL_SELECTED_TF_1 = brewer.pal(12, "Paired")[c(1, 3, 5, 7, 9, 11)]
 COL_SELECTED_TF_2 = brewer.pal(12, "Paired")[c(2, 4, 6, 8, 10, 12)]
 
-COL_ANCHOR = brewer.pal(12, "Paired")[c(2,6)] #[c(2,1,5,6)]
+COL_ANCHOR = brewer.pal(12, "Paired")[c(6,2)] #[c(2,6)] #[c(2,1,5,6)]
 
 #-------------------------------Parse and filter input ChiP-seq data  
 
@@ -300,8 +300,8 @@ rand_examples = c(
 )
 
 rand_examples = c(
-  357242, 16818, 379220,
-  214045, 69243, 163948
+  379220, 357242, 16818,
+  163948, 69243, 214045, 
 )
 write_rds(rand_examples, paste0(outPrefix, ".rand_examples.rds"))
 
@@ -314,12 +314,12 @@ cov_down <- covList[anchors(gi[rand_examples], type = "second", id = TRUE)]
 covDF <- tibble(
     interaction_id = rand_examples,
     loop = rep(c("Loop", "No loop"), each = 3),
-    reg = c(1:N_EXAMPLE, 1:N_EXAMPLE),
+    reg = c(3, 2, 1, 3, 2, 1),
     cov_up = as.list(cov_up),
     cov_down = as.list(cov_down),
   ) %>%
   gather(key = "anchor", value = "cov", cov_up, cov_down) %>%
-  mutate(anchor = str_replace(anchor, "cov_", "")) %>%
+  mutate(anchor = factor(str_replace(anchor, "cov_", ""), c("up", "down"))) %>%
   unnest(cov) %>%
   mutate(pos = rep(1:WINDOW_SIZE, n()/WINDOW_SIZE) - WINDOW_SIZE/2)
 
@@ -343,7 +343,9 @@ p = ggplot(filter(covDF, reg == 1), aes(x = pos, fill = anchor)) +
   geom_ribbon(aes(ymin = 0, ymax = cov)) +
   facet_grid(reg ~ loop, scales = "free_y") +
   theme_bw() + 
-  theme(axis.text.x = element_text(angle = 45, hjust = 1), strip.text.y = element_blank()) + 
+  theme(text = element_text(size = 20), 
+        axis.text.x = element_text(angle = 45, hjust = 1), 
+        strip.text.y = element_blank()) + 
   labs(y = paste(FACT, "ChIP-seq"), x = "Positions around CTCF motif") +
   scale_fill_manual(values = alpha(COL_ANCHOR, 0.5)) 
 ggsave(p, file = paste0(outPrefix, ".2_random_pairs.pdf"), w = 7, h = 3.5)
@@ -367,10 +369,15 @@ p = ggplot(factAncDF, aes(x = up, y = down, color = pos)) +
                 label = paste0("R=", round(R, 2))),
             data = corDF, color = "black",
             vjust = "inward", hjust = "inward", size = 7.5) +
-  theme_bw() + theme(strip.text.y = element_blank(), text = element_text(size = 20)) + 
+  theme_bw() + 
+  theme(strip.text.y = element_blank(), 
+        text = element_text(size = 20),
+        axis.title.x = element_text(face = "bold", color = COL_ANCHOR[1]),
+        axis.text.x = element_text(face = "bold", color = COL_ANCHOR[1]),
+        axis.title.y = element_text(face = "bold", color = COL_ANCHOR[2]),
+        axis.text.y = element_text(face = "bold", color = COL_ANCHOR[2])
+        ) + 
   xlab("UP anchor coverage") + ylab("DOWN anchor coverage") + 
-  # scale_color_gradient2(low = "grey", mid = scales::muted("blue"), high = "gray")
-  # scale_color_gradientn(colors = RColorBrewer::brewer.pal(3, "BrBG"))
   scale_color_gradientn(colors = colorspace::rainbow_hcl(20))
 ggsave(p, file = paste0(outPrefix, ".6_random_pairs.cor.pdf"), w = 7, h = 7)
 
@@ -383,12 +390,16 @@ p = ggplot(filter(subAncDF, reg == 1), aes(x = up, y = down, color = pos)) +
                 label = paste0("R=", round(R, 2))),
             data =filter(corDF, reg == 1), color = "black",
             vjust = "inward", hjust = "inward", size = 7.5) +
-  theme_bw() + theme(strip.text.y = element_blank(), text = element_text(size = 20)) + 
+  theme_bw() + theme(strip.text.y = element_blank(), 
+                     axis.title.x = element_text(face = "bold", color = COL_ANCHOR[1]),
+                     axis.text.x = element_text(face = "bold", color = COL_ANCHOR[1]),
+                     axis.title.y = element_text(face = "bold", color = COL_ANCHOR[2]),
+                     axis.text.y = element_text(face = "bold", color = COL_ANCHOR[2]),
+                     text = element_text(size = 20)) + 
   xlab("UP anchor coverage") + ylab("DOWN anchor coverage") + 
   # scale_color_gradient2(low = "grey", mid = scales::muted("blue"), high = "gray")
   # scale_color_gradientn(colors = RColorBrewer::brewer.pal(3, "BrBG"))
   scale_color_gradientn(colors = colorspace::rainbow_hcl(20))
-
 ggsave(p, file = paste0(outPrefix, ".2_random_pairs.cor.pdf"), w = 7, h = 3.5)
 
 
@@ -401,11 +412,11 @@ p <- ggplot(tidyDF, aes(x = loop, y = cor)) +
   scale_fill_manual(values = COL_SELECTED_TF) +
   theme_bw() + 
   theme(
-    text = element_text(size=20), 
+    text = element_text(size = 20), 
     # axis.text.x=element_blank(), 
     legend.position = "none",
     axis.text.x = element_text(angle = 60, hjust = 1)) + 
-  labs(y = "ChIP-seq\n Correlation", x="")
+  labs(y = "ChIP-seq\n Correlation", x = "")
 # geom_text(data=pvalDF, aes(label=paste0("p=", signif(p,3)), x=1.5, y=1.1), size=5)
 # p
 ggsave(p, file = paste0(outPrefix, ".EDA.cor.by_TF_and_loop.violin.pdf"), w = 7, h = 3.5)
