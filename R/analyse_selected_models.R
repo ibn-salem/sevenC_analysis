@@ -554,8 +554,8 @@ Rad21_cutof <- read_rds(paste0(lfcPrefix, ".f1ModelDF.rds")) %>%
 # add binary predictions
 mcols(gi)$predBinary_Rad21 <- mcols(gi)$pred_Rad21 >= Rad21_cutof
     
-# chr22 <- GRanges(seqinfo(gi))["chr22"]
-# subGI <- subsetByOverlaps(gi, chr22, ignore.strand = TRUE)
+chr22 <- GRanges(seqinfo(gi))["chr22"]
+subGI <- subsetByOverlaps(gi, chr22, ignore.strand = TRUE)
 
 # write all chr22 pairs (with labeld true ones)
 writeLongRangeFormat(
@@ -567,7 +567,7 @@ writeLongRangeFormat(
 # write all chr22 pairs (with labeld predictions)
 writeLongRangeFormat(
   gi = subGI, 
-  score_vec = ifelse(mcols(subGI)$predBinary_Rad21, 1, -1), 
+  score_vec = ifelse(!is.na(mcols(subGI)$predBinary_Rad21) & mcols(subGI)$predBinary_Rad21, 1, -1), 
   output_file = paste0(outPrefix, ".gi.pred_Rad21.chr22.longrange.txt")
 )
 
@@ -583,7 +583,7 @@ writeLongRangeFormat(
 rad21GI <- gi[!is.na(gi$predBinary_Rad21) & gi$predBinary_Rad21]
 writeLongRangeFormat(
   gi = rad21GI, 
-  score_vec = rad21GI$pred_Rad21, 
+  score_vec = 100 * rad21GI$pred_Rad21, 
   output_file = paste0(outPrefix, ".gi.pred_Rad21_sub.longrange.txt")
 )
 
