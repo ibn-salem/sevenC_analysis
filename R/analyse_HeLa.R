@@ -237,6 +237,7 @@ allTfModelDF <- read_tsv(paste0(modelPrefix, ".allTfModelDF.tsv"))
 bestNModelDF <- read_tsv(paste0(modelPrefix, ".bestNModelDF.tsv"))
 
 write_rds(designDF, paste0(outPrefix, "designDF.rds"))
+# designDF <- read_rds(paste0(outPrefix, "designDF.rds"))
 
 # pie(rep(1, nrow(designDF)), col = designDF$color, labels = designDF$name)
 
@@ -311,11 +312,11 @@ p <- ggplot(aucDFspecific, aes(x = name, y = aucs, fill = name)) +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1), 
         legend.position = "none",
-        text = element_text(size = 20)) +
+        text = element_text(size = 15)) +
   scale_fill_manual(values = COL_SELECTED_TF_2) +
   labs(x = "", y = "Prediction performance\n(AUC PRC)")
 p
-ggsave(p, file = paste0(outPrefix, ".AUC_PRC_specificTF.barplot.pdf"), w = 6, h = 6)
+ggsave(p, file = paste0(outPrefix, ".AUC_PRC_specificTF.barplot.pdf"), w = 3.5, h = 7)
 
 #-------------------------------------------------------------------------------
 # get ROC and PRC plots
@@ -337,18 +338,18 @@ g <- ggplot(rocDF, aes(x = x, y = y, color = name)) +
   geom_abline(intercept = 0, slope = 1, lty = "dotted") +
   theme_bw() + theme(aspect.ratio=1) +
   labs(x = "1 - Specificity", y = "Sensitivity") +
-  scale_color_manual(values = COL_SELECTED_TF_2,
+  scale_color_manual("",
+                     values = COL_SELECTED_TF_2,
                      labels = paste0(
                        aucDFroc$name, 
                        ": AUC=", 
                        signif(aucDFroc$aucs, 3)
                      ),
                      guide = guide_legend(
-                       override.aes = list(size = 2),
-                       reverse = TRUE)
+                       override.aes = list(size = 2))
   ) +
-  theme(legend.position = c(.75,.4))
-
+  theme(text = element_text(size = 15), legend.position = c(.7,.4),
+        legend.background = element_rect(fill = alpha('white', 0.1)))
 ggsave(g, file= paste0(outPrefix, ".ROC.pdf"), w = 5, h = 5)
 
 #-------------------------------------------------------------------------------
@@ -366,26 +367,17 @@ prcDF <- curveDF %>%
 g <- ggplot(prcDF, aes(x = x, y = y, color = name)) +
   geom_line() +
   geom_abline(intercept = prc_base, slope = 0, lty = "dotted") +
-  theme_bw() + theme(aspect.ratio=1) +
+  theme_bw() + theme(aspect.ratio = 1) +
   labs(x = "Recall", y = "Precision") +
-  scale_color_manual(values = designDF$color,
-                     labels = paste0(
-                       aucDFroc$name, 
-                       ": AUC=", 
-                       signif(aucDF$aucs, 3)
-                     ),
-                     guide = guide_legend(
-                       override.aes = list(size = 2),
-                       reverse = TRUE)
-                     # ) + theme(legend.position = c(.75,.4))
-  ) + theme(legend.position = "none")
+  scale_color_manual(values = designDF$color) + 
+  theme(legend.position = "none")
 
-ggsave(g, file= paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
+ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
 
 
--------------------------------------------------------------------------------
+  #-----------------------------------------------------------------------------
   # Binary prediction
-  #-------------------------------------------------------------------------------
+  #-----------------------------------------------------------------------------
 
 evalDF <- cvDF %>% 
   select(name, id, pred_allTF, label) %>%

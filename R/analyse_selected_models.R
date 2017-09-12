@@ -106,7 +106,8 @@ meta <- read_tsv(metaFile,
 meta <- meta %>% 
   filter(TF %in% SELECTED_TF) %>% 
   # mutate(name = paste0(TF, "_lfc")) %>%
-  mutate(name = TF) %>%
+  mutate(name = TF) %>% 
+  arrange(factor(name, SELECTED_TF)) %>% 
   select(TF, name, filePath, everything())
 
 
@@ -263,7 +264,7 @@ designDF <- tibble(
     map(meta$name, ~as.formula(paste0("loop ~ dist + strandOrientation + score_min + cor_", .x)) )
   ),
   color = c(
-    c("greenyellow", "gold2", "khaki", "brown4", "darkgray", "black"),
+    c("greenyellow", "gold2", "khaki", "brown4", "darkgray", "grey30"),
     COL_SELECTED_TF_1,
     COL_SELECTED_TF_2
   )
@@ -319,10 +320,18 @@ write_rds(cvDF, path = paste0(outPrefix, "cvDF.rds"))
 # df <- read_feather(paste0(outPrefix, ".df.feather"))
 # tidyCV <- read_feather(paste0(outPrefix, ".tidyCV.feather"))
 # cvDF <- read_rds(paste0(outPrefix, "cvDF.rds"))
-
+# designDF <- read_rds(paste0(outPrefix, "designDF.rds"))
 #===============================================================================
 # Performance Evaluation
 #===============================================================================
+
+# remove TF_only models
+designDF <- designDF %>% 
+  filter(!str_detect(name, ".*_only$") ) %>% 
+  mutate(name = factor(name, name))
+
+cvDF <- cvDF %>% 
+  filter(!str_detect(name, ".*_only$") ) 
 
 # get AUC of ROC and PRC curves for all 
 curves <- evalmod(
@@ -333,6 +342,8 @@ curves <- evalmod(
   posclass = levels(cvDF$label[[1]])[2],
   x_bins = 100)
 
+write_rds(curves, paste0(outPrefix, ".curves.rds"))
+# curves <- read_rds(paste0(outPrefix, ".curves.rds"))
 
 # get data.frame with auc values
 aucDF <-  as_tibble(auc(curves)) %>% 
@@ -348,11 +359,7 @@ aucDFmed <- aucDF %>%
     aucs_sd = sd(aucs, na.rm = TRUE)
   ) %>% 
   ungroup() 
-# %>% 
-#   # add color vector
-#   left_join( select(cvDF, name, color), by = c("modnames" = "name")) %>% 
-#   mutate(modnames = factor(modnames, designDF$name))
-  
+
 write_feather(aucDFmed, paste0(outPrefix, ".aucDFmed.feather"))
 
 #-------------------------------------------------------------------------------
@@ -362,7 +369,7 @@ p <- ggplot(aucDFmed, aes(x = modnames, y = aucs_mean, fill = modnames)) +
   geom_bar(stat = "identity", position = "dodge") +
   geom_errorbar(aes(ymin = aucs_mean - aucs_sd, ymax = aucs_mean + aucs_sd),
                 width = .25, position = position_dodge(width = 1)) + 
-  # geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), size = 3, hjust = 1, angle = 90, position = position_dodge(width = 1)) +
+  geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), size = 3, vjust = 1.5) +
   facet_grid(curvetypes ~ ., scales = "free") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "none") +
@@ -372,172 +379,119 @@ p <- ggplot(aucDFmed, aes(x = modnames, y = aucs_mean, fill = modnames)) +
 ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.barplot.pdf"), w = 3.5, h = 7)
 
 
+# Only AUC PRC as barplot
+p <- ggplot(filter(aucDFmed, curvetypes == "PRC"), 
+            aes(x = modnames, y = aucs_mean, fill = modnames)) +
+  geom_bar(stat = "identity") +
+  geom_errorbar(aes(ymin = aucs_mean - aucs_sd, ymax = aucs_mean + aucs_sd),
+                width = .25, position = position_dodge(width = 1)) + 
+  geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), 
+            size = 3, vjust = 1.5, angle = 0) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1), 
+        legend.position = "none",
+        text = element_text(size = 15)) +
+  scale_fill_manual(values = designDF$color) +
+  labs(x = "Models", y = "Prediction performance\n(AUC PRC)")
+# p
+ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.barplot.pdf"), w = 3.5, h = 7)
+
+
+
 #-------------------------------------------------------------------------------
 # get ROC and PRC plots
 #-------------------------------------------------------------------------------
 
-
-aucDFroc <- aucDFmed %>% 
-  filter(curvetypes == "ROC")
-
-curveDF <- as_tibble(as.data.frame(curves)) %>% 
-  mutate(modname = factor(modname, designDF$name))
-
-rocDF <- curveDF %>% 
-  filter(type == "ROC")
-
-g <- ggplot(rocDF, aes(x = x, y = y, color = modname)) +
-  geom_line() +
-  geom_abline(intercept = 0, slope = 1, lty = "dotted") +
-  theme_bw() + theme(aspect.ratio=1) +
-  labs(x = "1 - Specificity", y = "Sensitivity") +
-  scale_color_manual(values = designDF$color,
-                     labels = paste0(
-                       aucDFroc$modnames, 
-                       ": AUC=", 
-                       signif(aucDFroc$aucs_mean,3)
-                     ),
-                     guide = guide_legend(
-                       override.aes = list(size = 2),
-                       reverse = TRUE)
-  ) +
-  theme(legend.position = c(.75,.4))
-
-ggsave(g, file= paste0(outPrefix, ".ROC.pdf"), w = 5, h = 5)
-
-#-------------------------------------------------------------------------------
-# get PRC plots
-#-------------------------------------------------------------------------------
-aucDFprc <- aucDFmed %>% 
-  filter(curvetypes == "PRC")
-
-prc_base = precrec:::.get_pn_info(curves)$prc_base
-write_rds(prc_base, paste0(outPrefix, "prc_base.rds"))
-          
-prcDF <- curveDF %>% 
-  filter(type == "PRC")
-
-g <- ggplot(prcDF, aes(x = x, y = y, color = modname)) +
-  geom_line() +
-  geom_abline(intercept = prc_base, slope = 0, lty = "dotted") +
-  theme_bw() + theme(aspect.ratio=1) +
-  labs(x = "Recall", y = "Precision") +
-  scale_color_manual(values = designDF$color,
-                     labels = paste0(
-                       aucDFroc$modnames, 
-                       ": AUC=", 
-                       signif(aucDFprc$aucs_mean,3)
-                     ),
-                     guide = guide_legend(
-                       override.aes = list(size = 2),
-                       reverse = TRUE)
-  # ) + theme(legend.position = c(.75,.4))
-  ) + theme(legend.position = "none")
-
-ggsave(g, file= paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
-
-
--------------------------------------------------------------------------------
-# Binary prediction
-#-------------------------------------------------------------------------------
-
-evalDF <- cvDF %>% 
-  select(name, id, pred_allTF, label) %>%
-  # filter(name %in% SELECTED_TF) %>% 
-  filter(id == 1)
-
-
-# get prediction object with measurements
-predObj <- ROCR::prediction(evalDF$pred_allTF, evalDF$label, levels(evalDF$label[[1]]))
-perfObj <- ROCR::performance(predObj, measure = "f")
-
-# get cutoff and f1-score for each model as lists
-cutoff_List <- slot(perfObj, "x.values")
-f1_List <- slot(perfObj, "y.values")
-
-# # plot f1-score vs. cutoffs
-# pdf(paste0(outPrefix, ".selectedTF.pred_allTF.f1-score_vs_cutoff.pdf"))
-#   plot(performance(predObj, measure = "f"), col = brewer.pal(nrow(evalDF), "Dark2"))
-# dev.off()
-
-# plot f1-score vs. cutoffs using ggplot2
-f1DF <- tibble(
-  cutoff = unlist(cutoff_List),
-  f1_score = unlist(f1_List),
-  name = rep(evalDF$name, times = map_int(slot(perfObj, "x.values"), length))
+subsetList = list(
+  dist_orientation_motif = designDF$name[1:3],
+  genomic = designDF$name[1:4],
+  genomic_TF = designDF$name[1:10],
+  all_TF = designDF$name[1:11],
+  all = designDF$name
 )
 
-p <- ggplot(f1DF, aes(x = cutoff, y = f1_score, color = name)) +
-  geom_line() +
-  theme_bw() + theme(legend.position = "none") 
-ggsave(p, file = paste0(outPrefix, ".allTF.pred_allTF.f1-score_vs_cutoff.pdf"), w = 5, h = 5)
+for (subStr in names(subsetList)){
+  
+  aucDFmedSub <- aucDFmed %>% 
+    filter(modnames %in% subsetList[[subStr]])
+  
+  curveDF <- as_tibble(as.data.frame(curves)) %>% 
+    filter(modname %in% subsetList[[subStr]]) %>% 
+    mutate(modname = factor(modname, designDF$name))
+  
+  aucDFroc <- aucDFmedSub %>% 
+    filter(curvetypes == "ROC")
+  
+  
+  rocDF <- curveDF %>% 
+    filter(type == "ROC")
+  
+  g <- ggplot(rocDF, aes(x = x, y = y, color = modname)) +
+    geom_line() +
+    geom_abline(intercept = 0, slope = 1, lty = "dotted") +
+    theme_bw() + theme(aspect.ratio = 1) +
+    labs(x = "1 - Specificity", y = "Sensitivity") +
+    scale_color_manual("",
+                       values = designDF$color,
+                       labels = paste0(
+                         aucDFroc$modnames, 
+                         ": AUC=", 
+                         signif(aucDFroc$aucs_mean,3)
+                       ),
+                       guide = guide_legend(
+                         override.aes = list(size = 2))
+    ) +
+    theme(text = element_text(size = 15), legend.position = c(.7,.4),
+          legend.background = element_rect(fill = alpha('white', 0.1)))
+  ggsave(g, file = paste0(outPrefix, ".", subStr, ".ROC.pdf"), w = 5, h = 5)
+  
+  #-------------------------------------------------------------------------------
+  # get PRC plots
+  #-------------------------------------------------------------------------------
+  aucDFprc <- aucDFmedSub %>% 
+    filter(curvetypes == "PRC")
+  
+  prc_base = precrec:::.get_pn_info(curves)$prc_base
+  write_rds(prc_base, paste0(outPrefix, "prc_base.rds"))
+            
+  prcDF <- curveDF %>% 
+    filter(type == "PRC")
+  
+  g <- ggplot(prcDF, aes(x = x, y = y, color = modname)) +
+    geom_line() +
+    geom_abline(intercept = prc_base, slope = 0, lty = "dotted") +
+    theme_bw() + theme(aspect.ratio=1) +
+    labs(x = "Recall", y = "Precision") +
+    scale_color_manual(values = designDF$color) + 
+    theme(text = element_text(size = 15), legend.position = "none") +
+    ylim(0, 1)
+  
+  ggsave(g, file = paste0(outPrefix, ".", subStr, ".PRC.pdf"), w = 5, h = 5)
+  
 
-# plot curve only for selected TFs
-p <- ggplot(filter(f1DF, name %in% SELECTED_TF), aes(x = cutoff, y = f1_score, color = name)) +
-  geom_line() +
-  theme_bw() + theme(legend.position = "bottom") + 
-  scale_color_manual(values = COL_SELECTED_TF)
-ggsave(p, file = paste0(outPrefix, ".selectedTF.pred_allTF.f1-score_vs_cutoff.pdf"), w = 5, h = 5)
+  # Only AUC PRC as barplot
+  p <- ggplot(aucDFprc, 
+              aes(x = modnames, y = aucs_mean, fill = modnames)) +
+    geom_bar(stat = "identity") +
+    geom_errorbar(aes(ymin = aucs_mean - aucs_sd, ymax = aucs_mean + aucs_sd),
+                  width = .25, position = position_dodge(width = 1)) + 
+    geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), 
+              size = 3, vjust = 1.5, angle = 0) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1), 
+          legend.position = "none",
+          text = element_text(size = 15)) +
+    scale_fill_manual(values = designDF$color) +
+    labs(x = "Models", y = "Prediction performance\n(AUC PRC)") +
+    ylim(0, 0.45)
+  # p
+  ggsave(p, file = paste0(outPrefix, ".", subStr, ".AUC_ROC_PRC.barplot.pdf"), w = 3.5, h = 7)
+  
+}
 
+  #-------------------------------------------------------------------------------
+# Binary prediction
 #-------------------------------------------------------------------------------
-# get cutoff with maximal f1-score
-#-------------------------------------------------------------------------------
-
-f1ModelDF <- evalDF %>% 
-  mutate(
-    cutoffs = cutoff_List,
-    f1_score = f1_List,
-    max_idx = map_int(f1_score, which.max),
-    max_cutoff = map2_dbl(cutoffs, max_idx, ~ .x[[.y]]),
-    max_f1 = map2_dbl(f1_score, max_idx, ~ .x[[.y]])
-  ) %>% 
-  select(name, max_idx, max_cutoff, max_f1)
-
-write_rds(f1ModelDF, paste0(outPrefix, ".f1ModelDF.rds"))  
-write_tsv(f1ModelDF, paste0(outPrefix, ".f1ModelDF.tsv"))  
-
-allTFf1ModelDF <- f1ModelDF %>% 
-  summarize(
-    mean_max_cutoff = mean(max_cutoff, na.rm = TRUE),
-    median_max_cutoff = median(max_cutoff, na.rm = TRUE),
-    sd_max_cutoff = sd(max_cutoff, na.rm = TRUE)
-  )
-write_tsv(allTFf1ModelDF, paste0(outPrefix, ".f1ModelDF.tsv"))  
-
-# output the mean of the top N models
-ranked_models <- levels(aucDF$modnames)[1:10]
-
-topNf1ModelDF <- f1ModelDF %>% 
-  filter(name %in% ranked_models) %>% 
-  summarize(
-    mean_max_cutoff = mean(max_cutoff, na.rm = TRUE),
-    median_max_cutoff = median(max_cutoff, na.rm = TRUE),
-    sd_max_cutoff = sd(max_cutoff, na.rm = TRUE)
-  )
-
-write_tsv(topNf1ModelDF, paste0(outPrefix, ".topNf1ModelDF.tsv"))  
-
-#===============================================================================
-# Output motifs and interactios for genome broser
-#===============================================================================
-
-# output motifs as bed file
-names(regions(gi)) <- rep("CTCF", length(regions(gi)))
-score(regions(gi)) <- regions(gi)$sig
-rtracklayer::export.bed(regions(gi), paste0(outPrefix, ".motifs.bed"))
-
-#-------------------------------------------------------------------------------
-# output interactions
-#-------------------------------------------------------------------------------
-# mcols(gi) < df
-# outGI <- gi
-# mcols(outGI)[, "out_score"] <- ifelse(df$loop == "Loop", 1, 0)
-
-
-# parse average model of 10-fold CV for RAD21
-Rad21_model <- read_tsv(paste0(lfcPrefix, ".TFspecific_ModelDF.tsv")) %>% 
-  filter(TF == "RAD21") %>% 
-  pull(estimate_mean)
 
 mcols(gi)$loop <- df$loop
 
