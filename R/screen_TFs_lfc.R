@@ -757,7 +757,7 @@ predDF <- cvDF %>%
   )
 
 write_rds(predDF, paste0(outPrefix, ".predDF.rds"))
-
+# predDF <- read_rds(paste0(outPrefix, ".predDF.rds"))
   
 # get prediction object with measurements
 predObj <- ROCR::prediction(predDF$pred_specificTF, predDF$label, levels(predDF$label[[1]]))
@@ -780,6 +780,7 @@ f1DF <- tibble(
 )
 
 write_feather(f1DF, paste0(outPrefix, ".f1DF.feather"))
+# f1DF <- read_feather(paste0(outPrefix, ".f1DF.feather"))
 
 # p <- f1DF %>% 
 #   filter(TF %in% SELECTED_TF) %>% 
@@ -813,6 +814,7 @@ f1ModelDF <- predDF %>%
 
 write_rds(f1ModelDF, paste0(outPrefix, ".f1ModelDF.rds"))  
 write_tsv(f1ModelDF, paste0(outPrefix, ".f1ModelDF.tsv"))  
+# f1ModelDF <- read_rds(paste0(outPrefix, ".f1ModelDF.rds"))
 
 specificTFf1ModelDF <- f1ModelDF %>% 
   summarize(
@@ -820,10 +822,11 @@ specificTFf1ModelDF <- f1ModelDF %>%
     median_max_cutoff = median(max_cutoff, na.rm = TRUE),
     sd_max_cutoff = sd(max_cutoff, na.rm = TRUE)
   )
-write_tsv(allTFf1ModelDF, paste0(outPrefix, ".specificTFf1ModelDF.tsv"))  
+write_tsv(specificTFf1ModelDF, paste0(outPrefix, ".specificTFf1ModelDF.tsv"))  
 
 # output the mean of the top N models
-ranked_models <- levels(aucDF$modnames)[1:10]
+top_models <- levels(aucDF$modnames)[1:N_TOP_MODELS]
+# top_models <- read_rds(paste0(outPrefix, "ranked_models.rds"))[1:N_TOP_MODELS]
 
 topNf1ModelDF <- f1ModelDF %>% 
   filter(TF %in% ranked_models) %>% 
