@@ -56,6 +56,13 @@ make -C ${BIN}/bedtools2
 #-----------------------------------------------------------------------
 
 #=======================================================================
+# JASPAR 2018 CTCF motifs from UCSC GenomeBrowser track
+#=======================================================================
+mkdir -p JASPAR2018
+wget -P JASPAR2018 http://expdata.cmmt.ubc.ca/JASPAR/downloads/UCSC_tracks/2018/hg19/MA0139.1.tsv.gz
+gunzip JASPAR2018/MA0139.1.tsv.gz
+
+#=======================================================================
 # TF motif sites from ENCODE factor book
 #=======================================================================
 # manually follow this guide: 

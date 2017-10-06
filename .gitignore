@@ -19,4 +19,5 @@ data/hg19/*
 data/Vockley2016
 data/Starick2015
 data/GR_BAM
+data/JASPAR2018
 results/*
