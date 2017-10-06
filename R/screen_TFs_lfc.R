@@ -810,7 +810,8 @@ f1ModelDF <- predDF %>%
     max_cutoff = map2_dbl(cutoffs, max_idx, ~ .x[[.y]]),
     max_f1 = map2_dbl(f1_score, max_idx, ~ .x[[.y]])
   ) %>% 
-  select(TF, max_idx, max_cutoff, max_f1)
+  select(TF, max_idx, max_cutoff, max_f1) %>% 
+  arrange(desc(max_f1))
 
 write_rds(f1ModelDF, paste0(outPrefix, ".f1ModelDF.rds"))  
 write_tsv(f1ModelDF, paste0(outPrefix, ".f1ModelDF.tsv"))  
