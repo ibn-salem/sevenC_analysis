@@ -644,6 +644,26 @@ gunzip GR_BAM/*.gz
 # unzip Starick2015/E-MTAB-2954.raw.1.zip -d Starick2015
 
 #=======================================================================
+# TF pertubation expression gold standard from ChIPXpress (Wu2013)
+#=======================================================================
+mkdir Wu2013
+wget -P Wu2013 https://static-content.springer.com/esm/art%3A10.1186%2F1471-2105-14-188/MediaObjects/12859_2012_5924_MOESM1_ESM.xls
+
+# ChIPseq data
+
+# MYC Helas3 ChIP-seq ENCODE: https://www.encodeproject.org/experiments/ENCSR000EZD/
+# MYC MCF7 ChIP-seq ENCODE: https://www.encodeproject.org/experiments/ENCSR000DMP/
+
+# download "signal" bigWig files
+wget -P Wu2013 https://www.encodeproject.org/files/ENCFF000XCK/@@download/ENCFF000XCK.bigWig
+wget -P Wu2013 https://www.encodeproject.org/files/ENCFF000RYM/@@download/ENCFF000RYM.bigWig
+
+# download peaks
+wget -P Wu2013 https://www.encodeproject.org/files/ENCFF002CSE/@@download/ENCFF002CSE.bed.gz
+wget -P Wu2013 https://www.encodeproject.org/files/ENCFF002DBF/@@download/ENCFF002DBF.bed.gz
+gunzip Wu2013/*.bed.gz
+
+#=======================================================================
 # DNA shape from GBshape
 #=======================================================================
 # mkdir -p GBshape
