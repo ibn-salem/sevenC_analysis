@@ -10,11 +10,8 @@ library(EnsDb.Hsapiens.v75)
 library(TxDb.Hsapiens.UCSC.hg19.knownGene)  # for human genes
 library(tidyverse)    # for tidy data
 library(stringr)      # for string functions
-library(modelr)       # for tidy modeling
-library(precrec)      # for ROC and PRC curves
 library(RColorBrewer)   # for nice colors
 library(feather)      # for efficient storing of data.frames
-library(multidplyr)   # for partition() and collect() to work in parallel
 library(readxl)       # to read excel files
 source("R/chromloop.functions.R")
 source("R/gr_associations.R")
@@ -42,16 +39,84 @@ model <- read_tsv(paste0(model_prefix, ".bestNModelDF.tsv"))
 loops <- chromloop::predLoops(
   gi,
   formula = ~ dist + strandOrientation + score_min + cor_RAD21,
-  betas = model$estimate_mean
+  betas = model$estimate_mean,
+  # cutoff = 0.1
   )
 
 # get regions enclosed by loops
 loopRange <- interactionRange(loops)
 
 # extend anchros and find direct interactions
-extended_size = 5*10^4
-extLoops <- extendAnchors(loops, inner = extended_size, outer = 0)
+# extended_size = 5*10^4
+inner_extended_size = 0
+outer_extended_size = 0
+extLoops <- extendAnchors(loops, 
+                          inner = inner_extended_size, 
+                          outer = outer_extended_size)
 
+# --------------- Use all CTCF motif hits from JASPAR track --------------------
+jaspar_file = "data/JASPAR2018/MA0139.1.tsv"
+
+# header: chr `start (1-based)`   end `rel_score * 1000` `-1 * log10(p_value) * 100` strand
+col_names = c("chr", "start", "end", "name", "score", "log10_pval_times_100", "strand")
+motifDF <- read_tsv(jaspar_file,  col_names = col_names, skip = 1)
+motifDF <- motifDF %>% 
+  mutate(log10_pval = log10_pval_times_100 / 100) %>% 
+  filter(log10_pval >= 5)
+
+motifGR <- GRanges(motifDF$chr, IRanges(motifDF$start, motifDF$end),
+                   strand = motifDF$strand,
+                   score = motifDF$score,
+                   log10_pval = motifDF$log10_pval,
+                   seqinfo = seqinfo(TxDb.Hsapiens.UCSC.hg19.knownGene)) %>% 
+  sort()
+# remove chrY (because not in bigWig files)
+motifGR <- motifGR[seqnames(motifGR) != "chrY"]
+
+gi <- prepareCandidates(motifGR, maxDist = 10^6, scoreColname = "log10_pval")
+
+rad21_fc_file = "data/ENCODE/Experiments/ENCFF000WCT.bigWig"
+gi <- addCor(gi, rad21_fc_file, name = "RAD21")
+
+# predict loops using default model
+gi <- chromloop::predLoops(
+  gi,
+  formula = ~ dist + strandOrientation + score_min + cor_RAD21,
+  betas = model$estimate_mean,
+  cutoff = NULL)
+
+loops <- gi[gi$pred >= 0.2500245]
+
+
+# get regions enclosed by loops
+loopRange <- interactionRange(loops)
+
+# extend anchros and find direct interactions
+# extended_size = 5*10^4
+inner_extended_size = 5000
+outer_extended_size = 500
+extLoops <- extendAnchors(loops, 
+                          inner = inner_extended_size, 
+                          outer = outer_extended_size)
+
+# ----------------------- Analyze motif overlap from JASPAR and RSAT------------
+jasparGR <- motifGR[motifGR$log10_pval >= 6]
+rsatGR <- motif.hg19.CTCF
+
+jaspar_unique <- sum(countOverlaps(jasparGR, rsatGR) == 0)
+rsat_unique <- sum(countOverlaps(rsatGR, jasparGR) == 0)
+
+jaspar_common <- sum(countOverlaps(jasparGR, rsatGR) > 0)
+rsat_common <- sum(countOverlaps(rsatGR, jasparGR) > 0)
+
+motif_counts <- tibble(
+  type = c("JASPAR only", "Common", "RSAT only"),
+  count = c(jaspar_unique, jaspar_common, rsat_unique)
+)
+p <- ggplot(motif_counts, aes(x = type, y = count)) + 
+  geom_bar(stat = "identity")
+
+ggsave(paste0(outPrefix, ".motif_overlap_JASPAR_RSAT.barplot.pdf"), w = 6, h = 3)
 
 # ----------------------- Parse enhancer-gene associations ---------------------
 seqInfo <- seqinfo(motif.hg19.CTCF)
@@ -176,12 +241,15 @@ epDF <- epDF %>%
     )
 
 
-epDFtmp <- epDF %>% 
+epDF <- epDF %>% 
   mutate(
     # check if E-P associations overlap directly with anchor extended loops
     pairdOvlHits = map(ep, findOverlaps, subject = extLoops, ignore.strand = FALSE),
     inExtLoop = map2(pairdOvlHits, ep,  ~ seq(length(.y)) %in% unique(queryHits(.x))), 
-    inExtLoopPercent = map_dbl(inExtLoop, mean) * 100
+    inExtLoopPercent = map_dbl(inExtLoop, mean) * 100,
+    # analyse percent of extended loops that do connect E-Ps
+    extLoopWithEP = map(pairdOvlHits, ~ seq(length(extLoops)) %in% unique(subjectHits(.x)) ),
+    extLoopWithEPpercent = map_dbl(extLoopWithEP, mean) * 100
   )
 
 # rangeHits <- map(epRangeList, findOverlaps, subject = loopRange, type = "within")
@@ -193,7 +261,7 @@ epDFtmp <- epDF %>%
 # loopWithEP <- map(rangeHits, ~ seq(length(loops)) %in% unique(queryHits(.x)) )
 # loopWithEPpercent <- map(loopWithEP, mean)
 
-# -------------- plot percent of E-P that are connected by loops ---------------
+# -------------- plot percent of E-P that are connected by loop range ----------
 p <- ggplot(epDF, aes(
         x = cell, y = inLoopPercent, fill = cell, color = cell == "GM12878",
         label = round(inLoopPercent, 2)
@@ -206,6 +274,20 @@ p <- ggplot(epDF, aes(
     axis.text.x = element_text(angle = 45, hjust = 1)) + 
   scale_color_manual(values = c("black", "red"))
 ggsave(paste0(outPrefix, ".E-P_with_loop.percent.batrplot.pdf"), w = 6, h = 3)
+
+# -------------- plot percent of E-P that are connected by extended loops-------
+p <- ggplot(epDF, aes(
+  x = cell, y = inExtLoopPercent, fill = cell, color = cell == "GM12878",
+  label = round(inExtLoopPercent, 2)
+)) + 
+  geom_bar(stat = "identity") + 
+  geom_text(angle = 90, hjust = 1.1) +
+  theme_bw() + 
+  theme(
+    legend.position = "none", 
+    axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  scale_color_manual(values = c("black", "red"))
+ggsave(paste0(outPrefix, ".E-P_with_extLoop.percent.batrplot.pdf"), w = 6, h = 3)
 
 # -------------- plot percent of loops that connect E-P associations -----------
 p <- ggplot(epDF, 
@@ -222,3 +304,17 @@ p <- ggplot(epDF,
   scale_color_manual(values = c("black", "red"))
 ggsave(paste0(outPrefix, ".loops_connecting_E-Ps.percent.batrplot.pdf"), w = 6, h = 3)
 
+# ------ plot percent of extended loops that connect E-P associations -----------
+p <- ggplot(epDF, 
+            aes(x = cell, y = extLoopWithEPpercent, fill = cell, 
+                color = cell == "GM12878",
+                label = round(extLoopWithEPpercent, 2)
+            )) + 
+  geom_bar(stat = "identity") + 
+  geom_text(angle = 90, hjust = 1.1) +
+  theme_bw() + 
+  theme(
+    legend.position = "none", 
+    axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  scale_color_manual(values = c("black", "red"))
+ggsave(paste0(outPrefix, ".extLoops_connecting_E-Ps.percent.batrplot.pdf"), w = 6, h = 3)
