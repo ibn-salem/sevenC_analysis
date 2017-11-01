@@ -20,14 +20,14 @@ extendAnchors <- function(gi, inner, outer){
   anc1 <- InteractionSet::anchors(gi, "first")
   GenomicRanges::start(anc1) = GenomicRanges::start(anc1) - outer
   # extend end coordinate of fist anchor but only until start of second
-  GenomicRanges::end(anc1) = pmin(
+  GenomicRanges::end(anc1) <- pmin(
     GenomicRanges::end(anc1) + inner,
     pmax(GenomicRanges::start(InteractionSet::anchors(gi, "second")) - 1, GenomicRanges::end(anc1))
   )
   
   anc2 <- InteractionSet::anchors(gi, "second")
   # extend start coordinate of second anchor but only until end of first
-  GenomicRanges::start(anc2) = pmax(
+  GenomicRanges::start(anc2) <- pmax(
     GenomicRanges::start(anc2) - inner,
     pmin(GenomicRanges::end(InteractionSet::anchors(gi, "first")) + 1, GenomicRanges::start(anc2))
   )

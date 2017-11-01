@@ -664,6 +664,19 @@ wget -P Wu2013 https://www.encodeproject.org/files/ENCFF002DBF/@@download/ENCFF0
 gunzip Wu2013/*.bed.gz
 
 #=======================================================================
+# EnhancerAtlas association of enhancers to genes from Gao et al. 2016
+#=======================================================================
+mkdir -p EnhancerAtlas
+wget -P EnhancerAtlas http://enhanceratlas.org/Data_format_EP.txt
+
+# download enhancer-gene associations
+# wget -P EnhancerAtlas http://enhanceratlas.org/data/AllEPs/GM12878_EP.txt
+# wget -P EnhancerAtlas http://enhanceratlas.org/data/AllEPs/Hela_EP.txt
+
+wget -P EnhancerAtlas --input-file=EnhancerAtlas_EP_cell-lines_urls.txt
+
+
+#=======================================================================
 # DNA shape from GBshape
 #=======================================================================
 # mkdir -p GBshape
