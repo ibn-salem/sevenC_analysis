@@ -59,7 +59,8 @@ make -C ${BIN}/bedtools2
 # JASPAR 2018 CTCF motifs from UCSC GenomeBrowser track
 #=======================================================================
 mkdir -p JASPAR2018
-wget -P JASPAR2018 http://expdata.cmmt.ubc.ca/JASPAR/downloads/UCSC_tracks/2018/hg19/MA0139.1.tsv.gz
+# wget -P JASPAR2018 http://expdata.cmmt.ubc.ca/JASPAR/downloads/UCSC_tracks/2018/hg19/MA0139.1.tsv.gz
+wget -P JASPAR2018 http://expdata.cmmt.ubc.ca/JASPAR/downloads/UCSC_tracks/2018/hg19/tsv/MA0139.1.tsv.gz
 gunzip JASPAR2018/MA0139.1.tsv.gz
 
 #=======================================================================
@@ -182,6 +183,7 @@ export -f update_download
 
 # xargs -P 10 -n 1 update_download < ENCODE/URLs.fcDF.txt
 cat ENCODE/URLs.fcDF.txt | parallel -j 10 update_download
+cat ENCODE/URLs.fcDF_selectedTF.txt | parallel -j 3 --no-notice update_download
 
 cat ENCODE/URLs.fc_HELA_selected.txt | parallel -j 1 --no-notice update_download
 
