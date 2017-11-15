@@ -233,6 +233,15 @@ fcDF %>%
     path = file.path("data", "ENCODE", "URLs.fcDF.txt"),
     col_names = FALSE)
 
+# urls of selected TFs
+fcDF %>% 
+  filter(TF %in% SELECTED_TF) %>% 
+  select(`File download URL`) %>%
+  write_tsv(
+    path = file.path("data", "ENCODE", "URLs.fcDF_selectedTF.txt"),
+    col_names = FALSE)
+
+
 
 #-------------------------------------------------------------------------------
 # HeLa fold-change data
