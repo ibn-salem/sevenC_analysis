@@ -3,18 +3,19 @@
 ################################################################################
 
 
-require(chromloop)    # devtools::install_github("ibn-salem/chromloop")
-require(tidyverse)    # for tidy data
-require(stringr)      # for string functions
-require(modelr)       # for tidy modeling
-require(precrec)      # for ROC and PRC curves
-require(RColorBrewer)   # for nice colors
-require(rtracklayer)  # to import() BED files
-require(rsample)
-require(pryr) # for object_size()
-require(feather)      # for efficient storing of data.frames
-require(multidplyr)   # for partition() and collect() to work in parallel
-require(ROCR)         # for binary clasification metrices
+library(chromloop)    # devtools::install_github("ibn-salem/chromloop")
+library(rtracklayer)  # to import() BED files
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)  # for hg19 seqinfo
+library(tidyverse)    # for tidy data
+library(stringr)      # for string functions
+library(modelr)       # for tidy modeling
+library(precrec)      # for ROC and PRC curves
+library(RColorBrewer)   # for nice colors
+library(rsample)
+library(pryr) # for object_size()
+library(feather)      # for efficient storing of data.frames
+library(multidplyr)   # for partition() and collect() to work in parallel
+library(ROCR)         # for binary clasification metrices
 
 source("R/chromloop.functions.R")
 
@@ -23,7 +24,7 @@ source("R/chromloop.functions.R")
 
 # use previously saved gi object?
 GI_LOCAL <- FALSE
-N_CORES = parallel::detectCores() - 2
+N_CORES = parallel::detectCores() - 1
 
 MIN_MOTIF_SIG <- 6
 WINDOW_SIZE <- 1000
@@ -37,12 +38,18 @@ lfcPrefix <- file.path("results", paste0("v04_screen_TF_lfc.",
                                          "_b", BIN_SIZE))
 
 
-outPrefix <- file.path("results", paste0("v04_selected_models.", 
+# outPrefixOld <- file.path("results", paste0("v04_selected_models.", 
+#                                          paste0("motifSig", MIN_MOTIF_SIG), 
+#                                          "_w", WINDOW_SIZE, 
+#                                          "_b", BIN_SIZE))
+outPrefix <- file.path("results", paste0("v05_selected_models.", 
                                          paste0("motifSig", MIN_MOTIF_SIG), 
                                          "_w", WINDOW_SIZE, 
                                          "_b", BIN_SIZE))
 
 dir.create(dirname(outPrefix), showWarnings = FALSE)
+
+JASPAR_HG19_CTCF <- "data/JASPAR2018/MA0139.1.tsv"
 
 # True loops in GM12878 from Rao et al:
 LoopRao2014_GM12878_File <- 
@@ -77,7 +84,7 @@ names(COL_SELECTED_TF_2) <- SELECTED_TF
 #-------------------------------------------------------------------------------
 
 # partion data for parallel processing
-cluster <- create_cluster(N_CORES) %>% 
+cluster <- create_cluster(N_CORES) %>%
   cluster_library(packages = c("chromloop", "tidyverse"))
 
 # evaluate help function code on each cluster
@@ -112,31 +119,81 @@ meta <- meta %>%
 
 
 write_tsv(meta, paste0(outPrefix, ".meta.tsv"))
-
+# meta <- read_tsv("results/v04_selected_models.motifSig6_w1000_b1.meta.tsv")
 # meta <- meta[1:3, ]
 
 # Select motifs and parse input data -----------------------------------
+seqInfo <- seqinfo(chromloop::motif.hg19.CTCF)
+
 if (!GI_LOCAL) {
   
-  ancGR <- chromloop::motif.hg19.CTCF
+  USE_JASPAR = TRUE
+  if (USE_JASPAR) {
+    
+    #-------------------Parse CTCF motif sites from JASPAR track -----------------
+    # header: chr `start (1-based)`   end `rel_score * 1000` `-1 * log10(p_value) * 100` strand
+    col_names = c("chr", "start", "end", "name", "score", "log10_pval_times_100", "strand")
+    motifDF <- read_tsv(JASPAR_HG19_CTCF, col_names = col_names, skip = 1, 
+                        col_type = cols(
+                          chr = col_character(),
+                          start = col_integer(),
+                          end = col_integer(),
+                          name = col_character(),
+                          score = col_integer(),
+                          log10_pval_times_100 = col_integer(),
+                          strand = col_character()
+                        ))
+    motifDF <- motifDF %>% 
+      mutate(log10_pval = log10_pval_times_100 / 100) %>%
+      filter(log10_pval >= MIN_MOTIF_SIG)
+
+    motifGR <- GRanges(motifDF$chr, IRanges(motifDF$start, motifDF$end),
+                       strand = motifDF$strand,
+                       score = motifDF$log10_pval,
+                       seqinfo = seqInfo)
+    motifGR <- sort(motifGR)
+    # ----------------------- Analyze motif overlap from JASPAR and RSAT------------
+    jasparGR <- motifGR[motifGR$score >= 6]
+    rsatGR <- motif.hg19.CTCF
+    
+    jaspar_unique <- sum(countOverlaps(jasparGR, rsatGR) == 0)
+    rsat_unique <- sum(countOverlaps(rsatGR, jasparGR) == 0)
+    
+    jaspar_common <- sum(countOverlaps(jasparGR, rsatGR) > 0)
+    rsat_common <- sum(countOverlaps(rsatGR, jasparGR) > 0)
+    
+    motif_counts <- tibble(
+      type = c("JASPAR only", "Common", "RSAT only"),
+      count = c(jaspar_unique, jaspar_common, rsat_unique)
+    )
+    p <- ggplot(motif_counts, aes(x = type, y = count)) + 
+      geom_bar(stat = "identity") + 
+      geom_text(aes(label = count), vjust = "bottom")
+    ggsave(paste0(outPrefix, ".motif_overlap_JASPAR_RSAT.barplot.pdf"), w = 3, h = 3)
+    # -------------------
+    
+    gi <- prepareCisPairs(motifGR, maxDist = 10^6)
+    
+    } else {
+      outPrefix <- paste0(outPrefix, "_RSAT")
   
-  # filter for p-valu <= MIN_MOTIF_SIG
-  ancGR <- ancGR[ancGR$sig >= MIN_MOTIF_SIG]
-  
-  seqInfo <- seqinfo(chromloop::motif.hg19.CTCF)
-  
-  # get all pairs within 1M distance
-  gi <- chromloop::getCisPairs(ancGR, maxDist = 10^6)
-  
-  # add strand combinations
-  gi <- chromloop::addStrandCombination(gi)
-  
-  # add motif score
-  gi <- chromloop::addMotifScore(gi, colname = "sig")
+      # remove chrY (because not in bigWig files)
+      # motifGR <- motifGR[seqnames(motifGR) != "chrY"]
+      
+      # filter for p-valu <= MIN_MOTIF_SIG
+      # motifGR <- motifGR[motifGR$sig >= MIN_MOTIF_SIG]
+      
+      
+      # get all pairs within 1M distance and add basic annotations
+      motifGR <- motif.hg19.CTCF
+      motifGR <- motifGR[seqnames(motifGR) %in% c(paste0("chr", c(1:22)), "chrX")]
+      gi <- prepareCisPairs(motifGR, maxDist = 10^6, scoreColname = "sig")
+  }
   
   # parse loops
-  trueLoopsRao <- chromloop::parseLoopsRao(
+  trueLoopsRao <- parseLoopsRao(
     LoopRao2014_GM12878_File, seqinfo = seqInfo)
+  
   trueLoopsTang2015 <- do.call(
     "c",
     lapply(LoopTang2015_GM12878_Files, 
@@ -145,7 +202,11 @@ if (!GI_LOCAL) {
   
   gi <- addInteractionSupport(gi, trueLoopsRao, "Loop_Rao_GM12878")
   gi <- addInteractionSupport(gi, trueLoopsTang2015, "Loop_Tang2015_GM12878")
-  
+  gi$loop <- factor(
+    gi$Loop_Tang2015_GM12878 == "Loop" | gi$Loop_Rao_GM12878 == "Loop",
+    c(FALSE, TRUE),
+    c("No loop", "Loop")
+    )
   # save file for faster reload
   save(gi, file = paste0(outPrefix, ".gi.tmp.Rdata"))
   
@@ -160,55 +221,59 @@ if (!GI_LOCAL ) {
   # iterate over all ChIP-seq sata sets
   for (i in seq_len(nrow(meta))) {
     
-    # check if sample is not present yet.
-    if ( !paste0("cor_", meta$name[i]) %in% names(mcols(gi))){
-      
-      message("INFO: --> Working on sample: ", meta$name[i], ", ", i, " of ", nrow(meta), " <--")
-      
-      # add coverage  
-      regions(gi) <- chromloop::addCovToGR(
-        regions(gi), 
-        meta$filePath[i], 
-        window = WINDOW_SIZE,
-        bin_size = BIN_SIZE,
-        colname = paste0("cov_", meta$name[i])
-      )
-      
-      # add correlations
-      gi <- chromloop::applyToCloseGI(
-        gi, 
-        datcol = paste0("cov_", meta$name[i]),
-        fun = cor, 
-        colname = paste0("cor_", meta$name[i])
-      )  
-      
-    }
+    message("INFO: --> Working on sample: ", meta$name[i], ", ", i, " of ", nrow(meta), " <--")
+    
+    #add coverage and correlation of coverage
+    gi <- addCor(
+      gi,
+      meta$filePath[[i]],
+      meta$name[[i]],
+    )
+    
+    # source("R/old_code.R")
+    # regions(gi) <- addCovToGR_OLD(regions(gi), meta$filePath[[i]], colname = meta$name[[i]])
+    # regions(gi) <- addCovToGR(regions(gi), meta$filePath[[i]], colname = meta$name[[i]])
+    # regions(gi) <- addCovToGR_asGR(regions(gi), meta$filePath[[i]], colname = meta$name[[i]])
+    # gi <- addCovCor(gi, datacol = meta$name[[i]], colname = paste0("cor_", meta$name[[i]]))
   }  
   # Annotae with correlation across TFs -------------------------------------
   
   # get vector with coverage in whole anchor regions
-  covCols <- paste0("cov_", meta$name)
+  covCols <- meta$name
   covDF <- as_tibble(as.data.frame(mcols(regions(gi))[,covCols])) %>% 
     dplyr::mutate_all(.funs = function(l) map_dbl(l, sum))
   
   mcols(regions(gi))[, "cov_sum"] <- NumericList(as_tibble(t(covDF)))
   
-  gi <- chromloop::applyToCloseGI(
+  gi <- addCovCor(
     gi, 
-    datcol = "cov_sum",
-    fun = cor, 
+    datacol = "cov_sum",
     colname = "across_TFs"
   )
   
   # save file for faster reload
-  # save(gi, file = paste0(outPrefix, ".gi.Rdata"))
   write_rds(gi, paste0(outPrefix, ".gi.rds"))
   
 } else {
-  # load(paste0(outPrefix, ".gi.Rdata"))  
   gi <- read_rds(paste0(outPrefix, ".gi.rds"))
 }
 
+# #*******************************************************************************
+# # DEBUG difference to old analysis ----
+# #*******************************************************************************
+# 
+# giOld <- read_rds(paste0(outPrefixOld, ".gi.rds"))
+# giOld$loop <- factor(
+#   giOld$Loop_Tang2015_GM12878 == "Loop" | giOld$Loop_Rao_GM12878 == "Loop",
+#   c(FALSE, TRUE),
+#   c("No loop", "Loop")
+# )
+# 
+# boxplot(cor_STAT1 ~ loop, data = mcols(gi))
+# boxplot(cor_STAT1 ~ loop, data = mcols(giOld))
+# boxplot(cor_RAD21 ~ loop, data = mcols(gi))
+# 
+# identical(gi$cor_STAT1, giOld$cor_STAT1)
 
 #-------------------------------------------------------------------------------
 # Analyse loopps --------------------------------------------------------
@@ -216,11 +281,7 @@ if (!GI_LOCAL ) {
 
 df <- as_tibble(as.data.frame(mcols(gi))) %>%
   mutate(
-    id = 1:nrow(.),
-    loop = factor(
-      Loop_Tang2015_GM12878 == "Loop" | Loop_Rao_GM12878 == "Loop",
-      c(FALSE, TRUE),
-      c("No loop", "Loop"))
+    id = 1:nrow(.)
   ) %>% 
   select(id, loop, everything()) 
 
@@ -304,10 +365,10 @@ cvDF <- cvDF %>%
         design,
         map(tidy_model, "estimate")
       ),
-      chromloop::pred_logit
+      chromloop:::predLogit
     ),
     label = map(map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), "loop")
-  )%>% 
+  ) %>% 
   # collect results from cluster
   collect() %>% 
   # ungroup  
@@ -326,18 +387,18 @@ write_rds(cvDF, path = paste0(outPrefix, "cvDF.rds"))
 #===============================================================================
 
 # remove TF_only models
-designDF <- designDF %>% 
-  filter(!str_detect(name, ".*_only$") ) %>% 
+designDF <- designDF %>%
+  filter(!str_detect(name, ".*_only$") ) %>%
   mutate(name = factor(name, name))
 
-cvDF <- cvDF %>% 
-  filter(!str_detect(name, ".*_only$") ) 
+cvDF <- cvDF %>%
+  filter(!str_detect(name, ".*_only$") )
 
 # get AUC of ROC and PRC curves for all 
 curves <- evalmod(
   scores = cvDF$pred,
   labels = cvDF$label,
-  modnames = cvDF$name,
+  modnames = as.character(cvDF$name),
   dsids = cvDF$id,
   posclass = levels(cvDF$label[[1]])[2],
   x_bins = 100)
@@ -349,7 +410,6 @@ write_rds(curves, paste0(outPrefix, ".curves.rds"))
 aucDF <-  as_tibble(auc(curves)) %>% 
   mutate(modnames = factor(modnames, designDF$name)) %>% 
   arrange(modnames)
-
 
 aucDFmed <- aucDF %>%
   group_by(modnames, curvetypes) %>% 
@@ -372,10 +432,9 @@ p <- ggplot(aucDFmed, aes(x = modnames, y = aucs_mean, fill = modnames)) +
   geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), size = 3, vjust = 1.5) +
   facet_grid(curvetypes ~ ., scales = "free") +
   theme_bw() +
-  theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "none") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") +
   scale_fill_manual(values = designDF$color) +
   labs(x = "Models", y = "Prediction performance (AUC)")
-
 ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.barplot.pdf"), w = 3.5, h = 7)
 
 
@@ -386,16 +445,15 @@ p <- ggplot(filter(aucDFmed, curvetypes == "PRC"),
   geom_errorbar(aes(ymin = aucs_mean - aucs_sd, ymax = aucs_mean + aucs_sd),
                 width = .25, position = position_dodge(width = 1)) + 
   geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), 
-            size = 3, vjust = 1.5, angle = 0) +
+            size = 5, hjust = 1.2, angle = 90) +
   theme_bw() +
-  theme(axis.text.x = element_text(angle = 60, hjust = 1), 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), 
         legend.position = "none",
         text = element_text(size = 15)) +
   scale_fill_manual(values = designDF$color) +
   labs(x = "Models", y = "Prediction performance\n(AUC PRC)")
 # p
-ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.barplot.pdf"), w = 3.5, h = 7)
-
+ggsave(p, file = paste0(outPrefix, ".AUC_PRC.barplot.pdf"), w = 3.5, h = 7)
 
 
 #-------------------------------------------------------------------------------
@@ -489,13 +547,18 @@ for (subStr in names(subsetList)){
   
 }
 
-  #-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 # Binary prediction
 #-------------------------------------------------------------------------------
-
-mcols(gi)$loop <- df$loop
+# TODO FROM HERE!
 
 # add predictions using RAD21 model
+gi <- gi %>% 
+  predLoops(
+  formula = loop ~ dist + strandOrientation + score_min + cor_RAD21
+  
+)
+
 mcols(gi)$pred_Rad21 <- pred_logit(
   df, 
   as.formula("loop ~ dist + strandOrientation + score_min + cor_RAD21"),
