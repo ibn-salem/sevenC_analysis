@@ -19,14 +19,16 @@ source("R/gr_associations.R")
 
 # 0) Set parameter --------------------------------------------------------
 
-outPrefix <- "results/v04.TF_enhancer_associations"
+outPrefix <- "results/v05.TF_enhancer_associations"
 
-selected_model_prefix <- "results/v04_selected_models.motifSig6_w1000_b1"
+selected_model_prefix <- "results/v05_selected_models.motifSig6_w1000_b1"
 model_prefix <- "results/v04_screen_TF_lfc.motifSig6_w1000_b1" # bestNModelDF.tsv
 
 # enahncer_association_file <- "data/EnhancerAtlas/GM12878_EP.txt"
 
 enhancer_associations_urls <- "data/EnhancerAtlas_EP_cell-lines_urls.txt"
+
+metadata_file <- "data/ENCODE/metadata.fcDF.tsv"
 
 # --------------- Read predicted loops from selected model analysis ------------
 # lood predicted loops wiht coverage annotation
@@ -62,20 +64,24 @@ col_names = c("chr", "start", "end", "name", "score", "log10_pval_times_100", "s
 motifDF <- read_tsv(jaspar_file,  col_names = col_names, skip = 1)
 motifDF <- motifDF %>% 
   mutate(log10_pval = log10_pval_times_100 / 100) %>% 
-  filter(log10_pval >= 5)
+  filter(log10_pval >= 6)
 
 motifGR <- GRanges(motifDF$chr, IRanges(motifDF$start, motifDF$end),
                    strand = motifDF$strand,
-                   score = motifDF$score,
-                   log10_pval = motifDF$log10_pval,
+                   score = motifDF$log10_pval,
                    seqinfo = seqinfo(TxDb.Hsapiens.UCSC.hg19.knownGene)) %>% 
   sort()
+
 # remove chrY (because not in bigWig files)
-motifGR <- motifGR[seqnames(motifGR) != "chrY"]
+# motifGR <- motifGR[seqnames(motifGR) != "chrY"]
 
-gi <- prepareCandidates(motifGR, maxDist = 10^6, scoreColname = "log10_pval")
+gi <- prepareCisPairs(motifGR, maxDist = 10^6)
 
-rad21_fc_file = "data/ENCODE/Experiments/ENCFF000WCT.bigWig"
+# rad21_fc_file = "data/ENCODE/Experiments/ENCFF000WCT.bigWig"
+rad21_fc_file = read_tsv(metadata_file) %>% 
+  filter(TF == "RAD21") %>% 
+  pull(filePath)
+
 gi <- addCor(gi, rad21_fc_file, name = "RAD21")
 
 # predict loops using default model
@@ -85,7 +91,8 @@ gi <- chromloop::predLoops(
   betas = model$estimate_mean,
   cutoff = NULL)
 
-loops <- gi[gi$pred >= 0.2500245]
+loops <- gi %>% 
+  predLoops(formula = ~ dist + strandOrientation + score_min + cor_RAD21)
 
 
 # get regions enclosed by loops
