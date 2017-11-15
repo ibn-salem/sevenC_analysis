@@ -12,13 +12,10 @@ require(stringr)      # for string functions
 require(modelr)       # for tidy modeling
 require(precrec)      # for ROC and PRC curves
 require(RColorBrewer)   # for nice colors
-require(rsample)
-require(pryr) # for object_size()
 require(feather)      # for efficient storing of data.frames
-require(multidplyr)   # for partition() and collect() to work in parallel
 require(networkBMA)
 source("R/chromloop.functions.R")
-
+source("R/gr_associations.R")
 
 # 0) Set parameter --------------------------------------------------------
 
@@ -27,7 +24,7 @@ WINDOW_SIZE <- 1000
 BIN_SIZE <- 1
 
 PreviousOutPrefix <- "results/v03_screen_TF_qfraq.motifSig6_w1000_b1"
-outPrefix <- "results/v03_screen_TF_qfraq.motifSig6_w1000_b1.GR"
+outPrefix <- "results/v05_GR"
 
 # metadata file
 metaFile <- "data/GR_CHIP-SEQ_FILES.tsv"
@@ -112,38 +109,17 @@ for (i in seq_len(nrow(meta))) {
 
   message("INFO: --> Working on sample: ", meta$name[i], ", ", i, " of ", nrow(meta), " <--")
   
-  # add coverage  
-  regions(gi) <- chromloop::addCovToGR(
-    regions(gi), 
-    meta$path[i], 
-    window = WINDOW_SIZE,
-    bin_size = BIN_SIZE,
-    colname = paste0("cov_", meta$name[i])
-  )
-  
-  # add correlations
-  gi <- chromloop::applyToCloseGI(
-    gi, 
-    datcol = paste0("cov_", meta$name[i]),
-    fun = cor, 
-    colname = paste0("cor_", meta$name[i])
-  )  
+  gi <- addCor(gi, bwFile = meta$path[i], name = meta$name[i])
 
 }
 
-# add coverage for GR fold/change
-regions(gi) <- chromloop::addCovToGR(regions(gi), GR_fc_file, 
-  window = WINDOW_SIZE,
-  bin_size = BIN_SIZE,
-  colname = "cov_GR_foldChange"
-)
+# # combine replicates
+# treatment_names <- c("cor_ChIP_DEX_rep1", "cor_ChIP_DEX_rep2") 
+# mcols(gi)[, "cor_ChIP_DEX"] <- mcols(gi)[, treatment_names[1]] + mcols(gi)[, treatment_names[2]] / 2
 
-# add correlations
+# # add coverage for GR fold/change
 gi <- gi %>% 
-  chromloop::applyToCloseGI(
-    datcol = "cov_GR_foldChange", 
-    fun = cor, colname = "cor_GR_foldChange")
-
+  addCor(GR_fc_file, name = "GR_foldChange")
 
 #-------------------------------------------------------------------------------
 # Predict interactions
@@ -156,13 +132,21 @@ gi <- gi %>%
 # df <- read_feather(paste0(outPrefix, ".df.feather"))
 
 # for (nameStr in meta$name) {
-for (nameStr in c("GR_foldChange")) {
+# for (nameStr in c("GR_foldChange")) {
+for (nameStr in c(meta$name, "GR_foldChange")) {
     
   design <- as.formula(paste0("loop ~ dist + strandOrientation + score_min + cor_", nameStr))
   
-  mcols(gi)[, paste0("pred_", nameStr)] <- pred_logit(mcols(gi), design, modelDF$estimate_mean)
+  # mcols(gi)[, paste0("pred_", nameStr)] <- pred_logit(mcols(gi), design, modelDF$estimate_mean)
+  # mcols(gi)[, paste0("predBinary_", nameStr)] <-  mcols(gi)[, paste0("pred_", nameStr)] >= cutoffDF$mean_max_cutoff
+
+  gi <- gi %>% 
+    predLoops(
+      formula = design, 
+      betas = modelDF$estimate_mean, 
+      colname = paste0("pred_", nameStr),
+      cutoff = NULL)
   mcols(gi)[, paste0("predBinary_", nameStr)] <-  mcols(gi)[, paste0("pred_", nameStr)] >= cutoffDF$mean_max_cutoff
-  
 }
 
 
@@ -263,10 +247,10 @@ regPredDF <- tibble(
   mutate(
     gr = map(maxgap, ~ add_overalp(tssGR, peaksGR, colname = paste0("peak_ovlerap_", .), maxgap = .)),
     ovlerap = map2(gr, maxgap, ~ mcols(.x)[, paste0("peak_ovlerap_", .y)]),
-    loop_maxgap = map(map(maxgap, ~ chromloop::linkRegions(tssGR, peaksGR, subGI, maxgap = .)), isLinked, length(tssGR)),
-    loop_inner_maxgap = map(map(maxgap, ~ chromloop::linkRegions(tssGR, peaksGR, subGI, inner_maxgap = .)), isLinked, length(tssGR)),
-    loop_inner_outer = map(map(maxgap, ~ chromloop::linkRegions(tssGR, peaksGR, subGI, inner_maxgap = ., outer_maxgap = .)), isLinked, length(tssGR)),
-    loop_inLoop = map(map(maxgap, ~ chromloop::linkRegionsInLoops(tssGR, peaksGR, subGI, maxgap = .)), isLinked, length(tssGR)),
+    loop_maxgap = map(map(maxgap, ~ linkRegions(tssGR, peaksGR, subGI, maxgap = .)), isLinked, length(tssGR)),
+    loop_inner_maxgap = map(map(maxgap, ~ linkRegions(tssGR, peaksGR, subGI, inner_maxgap = .)), isLinked, length(tssGR)),
+    loop_inner_outer = map(map(maxgap, ~ linkRegions(tssGR, peaksGR, subGI, inner_maxgap = ., outer_maxgap = .)), isLinked, length(tssGR)),
+    loop_inLoop = map(map(maxgap, ~ linkRegionsInLoops(tssGR, peaksGR, subGI, maxgap = .)), isLinked, length(tssGR)),
   ) %>% 
   dplyr::select(maxgap, ovlerap, starts_with("loop_")) %>% 
   gather(key = method, value = pred, ovlerap, starts_with("loop_"))
@@ -305,7 +289,6 @@ p <- ggplot(tidyRegDF, aes(x = maxgap, y = performance, fill = method, label = r
     legend.position = "bottom",
     axis.text.x = element_text(angle = 60, hjust = 1)) +
   scale_fill_manual(values = brewer.pal(5, "Set1"))
-p
 
 ggsave(paste0(outPrefix, ".regGeneDF.binary_classification.barplot.pdf"), w = 12, h = 6)
 
@@ -313,8 +296,11 @@ ggsave(paste0(outPrefix, ".regGeneDF.binary_classification.barplot.pdf"), w = 12
 # compare predicted regulated genes to log10(p-value) of expression
 #-------------------------------------------------------------------------------
 DEvsRegDF <- regPredDF %>% 
-  mutate(padj = list(genesGR$padj)) %>% 
-  unnest(pred, padj)
+  mutate(
+    padj = list(genesGR$padj),
+    log2FoldChange = list(genesGR$log2FoldChange)
+    ) %>% 
+  unnest(pred, padj, log2FoldChange)
 
 p <- ggplot(DEvsRegDF, aes(x = pred, y = padj, color = method)) +
   geom_boxplot() +
@@ -328,4 +314,16 @@ p <- ggplot(DEvsRegDF, aes(x = pred, y = padj, color = method)) +
 
 ggsave(paste0(outPrefix, ".DEvsRegDF.padj_vs_binding.boxplot.pdf"), w = 6, h = 6)
 
+# abs log fold change
+p <- ggplot(DEvsRegDF, aes(x = pred, y = abs(log2FoldChange), color = method)) +
+  geom_boxplot() +
+  facet_wrap(~ maxgap) +
+  theme_bw() +
+  theme(
+    text = element_text(size=10), 
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 60, hjust = 1)) +
+  scale_color_manual(values = brewer.pal(5, "Set1"))
+
+ggsave(paste0(outPrefix, ".DEvsRegDF.absLogFC_vs_binding.boxplot.pdf"), w = 6, h = 6)
 
