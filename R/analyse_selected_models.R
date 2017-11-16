@@ -25,7 +25,8 @@ source("R/chromloop.functions.R")
 GI_LOCAL <- FALSE
 N_CORES = parallel::detectCores() - 1
 
-MIN_MOTIF_SIG <- 5
+# MIN_MOTIF_SIG <- 5
+MOTIF_PVAL <- 5e-06
 WINDOW_SIZE <- 1000
 BIN_SIZE <- 1
 K = 10  # K-fold corss validation
@@ -41,8 +42,12 @@ N_TOP_MODELS = 10
 #                                          paste0("motifSig", MIN_MOTIF_SIG), 
 #                                          "_w", WINDOW_SIZE, 
 #                                          "_b", BIN_SIZE))
+# outPrefix <- file.path("results", paste0("v05_selected_models.", 
+#                                          paste0("motifSig", MIN_MOTIF_SIG), 
+#                                          "_w", WINDOW_SIZE, 
+#                                          "_b", BIN_SIZE))
 outPrefix <- file.path("results", paste0("v05_selected_models.", 
-                                         paste0("motifSig", MIN_MOTIF_SIG), 
+                                         paste0("motifPval", MOTIF_PVAL), 
                                          "_w", WINDOW_SIZE, 
                                          "_b", BIN_SIZE))
 
