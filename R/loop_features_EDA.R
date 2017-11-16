@@ -21,7 +21,7 @@ BIN_SIZE <- 1
 COL_LOOP = brewer.pal(8, "Dark2")[c(8,5)] #[c(2,1,5,6)]
 names(COL_LOOP) <- c("No loop", "Loop")
 
-outPrefix <- file.path("results", paste0("v04_selected_models.", 
+outPrefix <- file.path("results", paste0("v05_selected_models.", 
                                          paste0("motifSig", MIN_MOTIF_SIG), 
                                          "_w", WINDOW_SIZE, 
                                          "_b", BIN_SIZE))
@@ -268,7 +268,8 @@ p
 ggsave(p, file = paste0(outPrefix, ".motif_score_by_loop.density.pdf"), w = 7, h = 3.5)
 
 ancLoop <- unlist(anchors(gi[df$loop == "Loop"], id = TRUE))
-motif_sig <- mcols(regions(gi))[, "sig"]
+# motif_sig <- mcols(regions(gi))[, "sig"]
+motif_sig <- mcols(regions(gi))[, "score"]
 motifDF <- tibble(
   motif_sig = motif_sig,
   loop = ifelse(1:length(motif_sig) %in% ancLoop, "Loop", "No loop")
@@ -288,7 +289,8 @@ ggsave(p, file = paste0(outPrefix, ".anchor_motif_score_by_loop.density.pdf"), w
 
 FACT = "ZNF143"
 N_EXAMPLE = 3
-covList <- mcols(regions(gi))[,paste0("cov_", FACT)]
+# covList <- mcols(regions(gi))[, paste0("cov_", FACT)]
+covList <- mcols(regions(gi))[, FACT]
 
 # get randomly three loop and three non-loping pairs
 bothSupport <- gi$Loop_Rao_GM12878  == "Loop" & gi$Loop_Tang2015_GM12878 == "Loop"
@@ -299,10 +301,10 @@ rand_examples = c(
   sample(which(bothNoSupport), N_EXAMPLE)
 )
 
-rand_examples = c(
-  379220, 357242, 16818,
-  163948, 69243, 214045, 
-)
+# rand_examples = c(
+#   379220, 357242, 16818,
+#   163948, 69243, 214045, 
+# )
 write_rds(rand_examples, paste0(outPrefix, ".rand_examples.rds"))
 
 # Loop examples : 357242, 16818, 452694, 379220
