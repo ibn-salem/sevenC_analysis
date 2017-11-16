@@ -5,7 +5,6 @@
 
 library(chromloop)    # devtools::install_github("ibn-salem/chromloop")
 library(rtracklayer)  # to import() BED files
-library(TxDb.Hsapiens.UCSC.hg19.knownGene)  # for hg19 seqinfo
 library(tidyverse)    # for tidy data
 library(stringr)      # for string functions
 library(modelr)       # for tidy modeling
@@ -26,16 +25,16 @@ source("R/chromloop.functions.R")
 GI_LOCAL <- FALSE
 N_CORES = parallel::detectCores() - 1
 
-MIN_MOTIF_SIG <- 6
+MIN_MOTIF_SIG <- 5
 WINDOW_SIZE <- 1000
 BIN_SIZE <- 1
 K = 10  # K-fold corss validation
 N_TOP_MODELS = 10
 
-lfcPrefix <- file.path("results", paste0("v04_screen_TF_lfc.", 
-                                         paste0("motifSig", MIN_MOTIF_SIG), 
-                                         "_w", WINDOW_SIZE, 
-                                         "_b", BIN_SIZE))
+# lfcPrefix <- file.path("results", paste0("v04_screen_TF_lfc.", 
+#                                          paste0("motifSig", MIN_MOTIF_SIG), 
+#                                          "_w", WINDOW_SIZE, 
+#                                          "_b", BIN_SIZE))
 
 
 # outPrefixOld <- file.path("results", paste0("v04_selected_models.", 
@@ -550,6 +549,7 @@ for (subStr in names(subsetList)){
 #-------------------------------------------------------------------------------
 # Binary prediction
 #-------------------------------------------------------------------------------
+stop("Stop here!")
 # TODO FROM HERE!
 
 # add predictions using RAD21 model
