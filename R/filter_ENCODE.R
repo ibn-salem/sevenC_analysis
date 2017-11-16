@@ -235,7 +235,7 @@ fcDF %>%
 
 # urls of selected TFs
 fcDF %>% 
-  filter(TF %in% SELECTED_TF) %>% 
+  filter(TF %in% useTFs) %>% 
   select(`File download URL`) %>%
   write_tsv(
     path = file.path("data", "ENCODE", "URLs.fcDF_selectedTF.txt"),
