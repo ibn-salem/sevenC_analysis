@@ -23,7 +23,7 @@ source("R/chromloop.functions.R")
 
 # use previously saved gi object?
 GI_LOCAL <- FALSE
-N_CORES = parallel::detectCores() - 1
+N_CORES = min(10, parallel::detectCores() - 1)
 
 # MIN_MOTIF_SIG <- 5
 MOTIF_PVAL <- 5e-06
@@ -148,8 +148,9 @@ if (!GI_LOCAL) {
                           strand = col_character()
                         ))
     motifDF <- motifDF %>% 
-      mutate(log10_pval = log10_pval_times_100 / 100) %>%
-      filter(log10_pval >= MIN_MOTIF_SIG)
+      mutate(log10_pval = log10_pval_times_100 / 100) %>% 
+      filter(log10_pval >= -log10(MOTIF_PVAL))
+    
 
     motifGR <- GRanges(motifDF$chr, IRanges(motifDF$start, motifDF$end),
                        strand = motifDF$strand,
@@ -157,7 +158,7 @@ if (!GI_LOCAL) {
                        seqinfo = seqInfo)
     motifGR <- sort(motifGR)
     # ----------------------- Analyze motif overlap from JASPAR and RSAT------------
-    jasparGR <- motifGR[motifGR$score >= 6]
+    jasparGR <- motifGR #[motifGR$score >= 6]
     rsatGR <- motif.hg19.CTCF
     
     jaspar_unique <- sum(countOverlaps(jasparGR, rsatGR) == 0)

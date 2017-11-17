@@ -13,7 +13,8 @@ require(feather)      # for efficient storing of data.frames
 
 # use previously saved gi object?
 
-MIN_MOTIF_SIG <- 6
+# MIN_MOTIF_SIG <- 5
+MOTIF_PVAL <- 5e-06
 WINDOW_SIZE <- 1000
 BIN_SIZE <- 1
 
@@ -21,8 +22,12 @@ BIN_SIZE <- 1
 COL_LOOP = brewer.pal(8, "Dark2")[c(8,5)] #[c(2,1,5,6)]
 names(COL_LOOP) <- c("No loop", "Loop")
 
+# outPrefix <- file.path("results", paste0("v05_selected_models.", 
+#                                          paste0("motifSig", MIN_MOTIF_SIG), 
+#                                          "_w", WINDOW_SIZE, 
+#                                          "_b", BIN_SIZE))
 outPrefix <- file.path("results", paste0("v05_selected_models.", 
-                                         paste0("motifSig", MIN_MOTIF_SIG), 
+                                         paste0("motifPval", MOTIF_PVAL), 
                                          "_w", WINDOW_SIZE, 
                                          "_b", BIN_SIZE))
 
