@@ -14,7 +14,7 @@ require(feather)      # for efficient storing of data.frames
 # use previously saved gi object?
 
 # MIN_MOTIF_SIG <- 5
-MOTIF_PVAL <- 5e-06
+MOTIF_PVAL <- 2.5 * 1e-06
 WINDOW_SIZE <- 1000
 BIN_SIZE <- 1
 
