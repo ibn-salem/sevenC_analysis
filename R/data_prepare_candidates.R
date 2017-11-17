@@ -29,7 +29,7 @@ LoopTang2015_GM12878_Files <- c(
 dataCandidatesPreifx <- file.path("results", 
                                  paste0("CTCF_JASPAR.v01.pval_", MOTIF_PVAL))
 
-dir.create(dirname(motifPrefix), showWarnings = FALSE)
+dir.create(dirname(dataCandidatesPreifx), showWarnings = FALSE)
 #*******************************************************************************
 # Parse CTCF motif sites from JASPAR track -----------------
 #*******************************************************************************
