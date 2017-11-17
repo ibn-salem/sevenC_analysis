@@ -18,8 +18,16 @@ cd ..
 ```
 This will create sub-folders, download external data sets and formats them.
 
-
 ## Predictions using selected models
+
+### Prepare candidates
+First we need to read the CTCF motif data and prepare candidate loops as motif pairs. 
+Also candidates are labled whether they represent true loops according to Hi-C and ChIA-PET.
+```
+Rscript R/data_prepare_candidates.R
+```
+
+
 To run the predictions and performance evaluation using six selected TF ChIP-seq data sets, run the follwoing R script. 
 ```
 Rscript R/analyse_selected_models.R
