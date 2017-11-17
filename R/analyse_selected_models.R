@@ -132,7 +132,7 @@ write_tsv(meta, paste0(outPrefix, ".meta.tsv"))
 # Select motifs and parse input data -----------------------------------
 
 # read CTCF moitf pairs as candidates
-gi <- read_rds(paste0(dataCandidatesPreifx, "gi.rds"))
+gi <- read_rds(paste0(dataCandidatesPreifx, ".gi.rds"))
 
 # Annotae with coverage and correlation -------------------------------------
 

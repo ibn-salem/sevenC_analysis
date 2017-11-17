@@ -99,13 +99,12 @@ gi$loop <- factor(
   c("No loop", "Loop")
 )
 # save file for faster reload
-save(gi, file = paste0(dataCandidatesPreifx, ".gi.Rdata"))
+write_rds(gi, paste0(dataCandidatesPreifx, ".gi.rds"))
 
 
 #*******************************************************************************
 # Analze the cutof threhold on p-value
 #*******************************************************************************
-
 df <- allMotifDF %>% 
   filter(log10_pval >= 5)
 
