@@ -83,13 +83,13 @@ gi <- prepareCisPairs(motifGR, maxDist = 10^6)
 
 # parse loops
 trueLoopsRao <- parseLoopsRao(
-  LoopRao2014_GM12878_File, seqinfo = seqInfo)
+  LoopRao2014_GM12878_File, seqinfo = seqInfoHg19)
 
 trueLoopsTang2015 <- do.call(
   "c",
   map(LoopTang2015_GM12878_Files, 
          chromloop::parseLoopsTang2015, 
-         seqinfo = seqInfo))
+         seqinfo = seqInfoHg19))
 
 gi <- addInteractionSupport(gi, trueLoopsRao, "Loop_Rao_GM12878")
 gi <- addInteractionSupport(gi, trueLoopsTang2015, "Loop_Tang2015_GM12878")
