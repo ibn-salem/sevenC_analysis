@@ -53,7 +53,10 @@ outPrefix <- file.path("results", paste0("v05_selected_models.",
 
 dir.create(dirname(outPrefix), showWarnings = FALSE)
 
-JASPAR_HG19_CTCF <- "data/JASPAR2018/MA0139.1.tsv"
+# define data candidate path
+dataCandidatesPreifx <- file.path("results", 
+                                  paste0("CTCF_JASPAR.v01.pval_", MOTIF_PVAL))
+
 
 # True loops in GM12878 from Rao et al:
 LoopRao2014_GM12878_File <- 
@@ -127,97 +130,9 @@ write_tsv(meta, paste0(outPrefix, ".meta.tsv"))
 # meta <- meta[1:3, ]
 
 # Select motifs and parse input data -----------------------------------
-seqInfo <- seqinfo(chromloop::motif.hg19.CTCF)
 
-if (!GI_LOCAL) {
-  
-  USE_JASPAR = TRUE
-  if (USE_JASPAR) {
-    
-    #-------------------Parse CTCF motif sites from JASPAR track -----------------
-    # header: chr `start (1-based)`   end `rel_score * 1000` `-1 * log10(p_value) * 100` strand
-    col_names = c("chr", "start", "end", "name", "score", "log10_pval_times_100", "strand")
-    motifDF <- read_tsv(JASPAR_HG19_CTCF, col_names = col_names, skip = 1, 
-                        col_type = cols(
-                          chr = col_character(),
-                          start = col_integer(),
-                          end = col_integer(),
-                          name = col_character(),
-                          score = col_integer(),
-                          log10_pval_times_100 = col_integer(),
-                          strand = col_character()
-                        ))
-    motifDF <- motifDF %>% 
-      mutate(log10_pval = log10_pval_times_100 / 100) %>% 
-      filter(log10_pval >= -log10(MOTIF_PVAL))
-    
-
-    motifGR <- GRanges(motifDF$chr, IRanges(motifDF$start, motifDF$end),
-                       strand = motifDF$strand,
-                       score = motifDF$log10_pval,
-                       seqinfo = seqInfo)
-    motifGR <- sort(motifGR)
-    # ----------------------- Analyze motif overlap from JASPAR and RSAT------------
-    jasparGR <- motifGR #[motifGR$score >= 6]
-    rsatGR <- motif.hg19.CTCF
-    
-    jaspar_unique <- sum(countOverlaps(jasparGR, rsatGR) == 0)
-    rsat_unique <- sum(countOverlaps(rsatGR, jasparGR) == 0)
-    
-    jaspar_common <- sum(countOverlaps(jasparGR, rsatGR) > 0)
-    rsat_common <- sum(countOverlaps(rsatGR, jasparGR) > 0)
-    
-    motif_counts <- tibble(
-      type = c("JASPAR only", "Common", "RSAT only"),
-      count = c(jaspar_unique, jaspar_common, rsat_unique)
-    )
-    p <- ggplot(motif_counts, aes(x = type, y = count)) + 
-      geom_bar(stat = "identity") + 
-      geom_text(aes(label = count), vjust = "bottom")
-    ggsave(paste0(outPrefix, ".motif_overlap_JASPAR_RSAT.barplot.pdf"), w = 3, h = 3)
-    # -------------------
-    
-    gi <- prepareCisPairs(motifGR, maxDist = 10^6)
-    
-    } else {
-      outPrefix <- paste0(outPrefix, "_RSAT")
-  
-      # remove chrY (because not in bigWig files)
-      # motifGR <- motifGR[seqnames(motifGR) != "chrY"]
-      
-      # filter for p-valu <= MIN_MOTIF_SIG
-      # motifGR <- motifGR[motifGR$sig >= MIN_MOTIF_SIG]
-      
-      
-      # get all pairs within 1M distance and add basic annotations
-      motifGR <- motif.hg19.CTCF
-      motifGR <- motifGR[seqnames(motifGR) %in% c(paste0("chr", c(1:22)), "chrX")]
-      gi <- prepareCisPairs(motifGR, maxDist = 10^6, scoreColname = "sig")
-  }
-  
-  # parse loops
-  trueLoopsRao <- parseLoopsRao(
-    LoopRao2014_GM12878_File, seqinfo = seqInfo)
-  
-  trueLoopsTang2015 <- do.call(
-    "c",
-    lapply(LoopTang2015_GM12878_Files, 
-           chromloop::parseLoopsTang2015, 
-           seqinfo = seqInfo))
-  
-  gi <- addInteractionSupport(gi, trueLoopsRao, "Loop_Rao_GM12878")
-  gi <- addInteractionSupport(gi, trueLoopsTang2015, "Loop_Tang2015_GM12878")
-  gi$loop <- factor(
-    gi$Loop_Tang2015_GM12878 == "Loop" | gi$Loop_Rao_GM12878 == "Loop",
-    c(FALSE, TRUE),
-    c("No loop", "Loop")
-    )
-  # save file for faster reload
-  save(gi, file = paste0(outPrefix, ".gi.tmp.Rdata"))
-  
-}else{
-  load(paste0(outPrefix, ".gi.tmp.Rdata"))  
-}
+# read CTCF moitf pairs as candidates
+gi <- read_rds(paste0(dataCandidatesPreifx, "gi.rds"))
 
 # Annotae with coverage and correlation -------------------------------------
 

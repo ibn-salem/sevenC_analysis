@@ -18,6 +18,8 @@ MOTIF_PVAL <- 5e-06
 WINDOW_SIZE <- 1000
 BIN_SIZE <- 1
 
+dataCandidatesPreifx <- file.path("results", 
+                                 paste0("CTCF_JASPAR.v01.pval_", MOTIF_PVAL))
 
 COL_LOOP = brewer.pal(8, "Dark2")[c(8,5)] #[c(2,1,5,6)]
 names(COL_LOOP) <- c("No loop", "Loop")
@@ -94,6 +96,30 @@ tidyDF <- df %>%
 
 # load GInteractions object
 gi <- read_rds(paste0(outPrefix, ".gi.rds"))
+
+
+
+#*******************************************************************************
+# Compaire motifs from RSAT and JASPAR ----
+#*******************************************************************************
+jasparGR <- read_rds(paste0(dataCandidatesPreifx, "motifGR.rds")) 
+rsatGR <- chromloop::motif.hg19.CTCF
+
+jaspar_unique <- sum(countOverlaps(jasparGR, rsatGR) == 0)
+rsat_unique <- sum(countOverlaps(rsatGR, jasparGR) == 0)
+
+jaspar_common <- sum(countOverlaps(jasparGR, rsatGR) > 0)
+rsat_common <- sum(countOverlaps(rsatGR, jasparGR) > 0)
+
+motif_counts <- tibble(
+  type = c("JASPAR only", "Common", "RSAT only"),
+  count = c(jaspar_unique, jaspar_common, rsat_unique)
+)
+p <- ggplot(motif_counts, aes(x = type, y = count)) + 
+  geom_bar(stat = "identity") + 
+  geom_text(aes(label = count), vjust = "bottom")
+ggsave(paste0(outPrefix, ".motif_overlap_JASPAR_RSAT.barplot.pdf"), w = 3, h = 3)
+# -------------------
 
 #======================== Percent positives  ==================
 
