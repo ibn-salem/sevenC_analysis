@@ -27,6 +27,11 @@ Also candidates are labled whether they represent true loops according to Hi-C a
 Rscript R/data_prepare_candidates.R
 ```
 
+To run moitf significance threshold analysis run:
+```
+Rscript R/analyse_motif_significance.R
+```
+
 
 To run the predictions and performance evaluation using six selected TF ChIP-seq data sets, run the follwoing R script. 
 ```

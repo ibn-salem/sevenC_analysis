@@ -2,9 +2,10 @@
 # Read CTCF motif sites from JASPAR TSV files and provide it as GRanges object
 #*******************************************************************************
 
-
 library(chromloop)  # to import() BED files
 require(TxDb.Hsapiens.UCSC.hg19.knownGene)  # for seqinfo object
+require(BSgenome.Hsapiens.UCSC.hg19) # for human genome sequence
+require(DNAshapeR)    # for DNA shape prediction
 library(tidyverse)    # for tidy data
 library(stringr)      # for string functions
 library(readr)        # for write_rds()
@@ -101,66 +102,61 @@ gi$loop <- factor(
 # save file for faster reload
 write_rds(gi, paste0(dataCandidatesPreifx, ".gi.rds"))
 
-
 #*******************************************************************************
-# Analze the cutof threhold on p-value
+# Add DNA sahpe predictions
 #*******************************************************************************
-df <- allMotifDF %>% 
-  filter(log10_pval >= 5)
-
-# build GRanges object
-motifGR <- GRanges(df$chr, IRanges(df$start, df$end),
-                   strand = df$strand,
-                   score = df$log10_pval,
-                   seqinfo = seqInfoHg19)
-# sort
-motifGR <- sort(motifGR)
-gi <- prepareCisPairs(motifGR, maxDist = 1e+6)
-gi <- addInteractionSupport(gi, trueLoopsRao, "Loop_Rao_GM12878")
-gi <- addInteractionSupport(gi, trueLoopsTang2015, "Loop_Tang2015_GM12878")
-gi$loop <- factor(
-  gi$Loop_Tang2015_GM12878 == "Loop" | gi$Loop_Rao_GM12878 == "Loop",
-  c(FALSE, TRUE),
-  c("No loop", "Loop")
-)
 
 
-moitf_log10_pval <- motifGR$score
-gi_max_score = gi$score_min
-loop = gi$loop == "Loop"
+#'*****************************************************************************
+#' Function to add DNA-shape features as NummericList to GR
+#'*****************************************************************************
+#' 
+addShapeToGR <- function(gr, BSgenome, width = 100,
+                         shapeTypes = c("MGW", "HelT", "ProT", "Roll", "EP", 
+                                        "Opening", "Rise", "Shift", 
+                                        "Stagger", "Slide")) {
+  
+  # define temp file for sequences
+  tempFile <- tempfile("tmp.fa")
+  
+  # get sequence of anchors
+  getFasta(gr, BSgenome, width = width, filename = tempFile)
+  
+  # predict DNA shape
+  shapeList <- getShape(tempFile, shapeType = shapeTypes)
+  
+  # add NA for in-between base features
+  shapeList <- map(shapeList, function(m) {
+    if (ncol(m) == width - 1 ){
+      m <- cbind(m, NA)
+    }
+    return(m)
+  })
+  
+  # convert each matrix to NummericList
+  shapeNumList <- map(shapeList, ~ NumericList(as.data.frame(t(.x)))) 
+  
+  
+  # add to mcols of gr
+  mcols(gr) <- cbind(mcols(gr), shapeNumList)
+  
+  return(gr)
+}
 
-motif_cutoff_DF <- tibble(
-  p = 1e-6 * seq(1, 10, 0.5),
-  log10_p = -log10(p),
-  n_motif = map_int(log10_p, ~ sum(moitf_log10_pval >= .x)),
-  n_gi =  map_int(log10_p, ~ sum(gi$score_min >= .x)),
-  n_gi_loop = map_int(log10_p, ~ sum(loop[gi$score_min >= .x])),
-  percent_loop = n_gi_loop / n_gi * 100
-)
 
-write_tsv(motif_cutoff_DF, paste0(dataCandidatesPreifx, ".moitf_cutoff_DF.tsv"))
+# add shape predictions
+shapeTypes <- c("MGW", "HelT", "ProT", "Roll", "EP", "Opening", "Rise", 
+                "Shift", "Stagger", "Slide")
+regions(gi) <- addShapeToGR(regions(gi), BSgenome.Hsapiens.UCSC.hg19, 
+                            width = 100, shapeTypes = shapeTypes)
 
-p <- ggplot(motif_cutoff_DF, aes(x = log10_p, y = n_motif)) +
-  geom_line() +
-  geom_point() +
-  theme_bw() + 
-  labs(x = "Motif significance -log10(p-value)", y = "Number of motifs")
-ggsave(paste0(dataCandidatesPreifx, ".motifs_by_moitf_cutoff.pdf"),
-       w = 3, h = 3)
+# add correlation of chape predictions
+for (TYPE in shapeTypes) {
+  gi <- addCovCor(gi, TYPE, colname = paste0("cor_", TYPE), 
+                            use = "na.or.complete")
+}
 
-p <- ggplot(motif_cutoff_DF, aes(x = log10_p, y = n_gi)) +
-  geom_line() +
-  geom_point() +
-  theme_bw() + 
-  labs(x = "Motif significance -log10(p-value)", y = "Number of motif pairs")
-ggsave(paste0(dataCandidatesPreifx, ".motifs_pairs_by_moitf_cutoff.pdf"),
-       w = 3, h = 3)
+# save file for faster reload
+write_rds(gi, paste0(dataCandidatesPreifx, ".gi_with_shape.rds"))
 
 
-p <- ggplot(motif_cutoff_DF, aes(x = log10_p, y = percent_loop)) +
-  geom_line() +
-  geom_point() +
-  theme_bw() + 
-  labs(x = "Motif significance -log10(p-value)", y = "Percent true loops")
-ggsave(paste0(dataCandidatesPreifx, ".percent_true_loops_by_moitf_cutoff.pdf"),
-       w = 3, h = 3)
