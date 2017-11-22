@@ -51,7 +51,7 @@ names(COL_LOOP) <- c("No loop", "Loop")
 #                                          paste0("motifSig", MIN_MOTIF_SIG), 
 #                                          "_w", WINDOW_SIZE, 
 #                                          "_b", BIN_SIZE))
-outPrefix <- file.path("results", paste0("v05_selected_models.", 
+outPrefix <- file.path("results", paste0("v05_screen_TF_lfc.", 
                                          paste0("motifPval", MOTIF_PVAL), 
                                          "_w", WINDOW_SIZE, 
                                          "_b", BIN_SIZE))
@@ -114,7 +114,7 @@ meta <- read_tsv(metaFile,
 
 # reformat metadata
 meta <- meta %>% 
-  mutate(name = paste0(TF, "_lfc")) %>%
+  mutate(name = TF) %>%
   select(TF, name, filePath, everything())
 
 # adapte colors
@@ -178,30 +178,6 @@ write_feather(df, paste0(outPrefix, ".df.feather"))
 # df <- read_feather(paste0(outPrefix, ".df.feather"))
 
 #-------------------------------------------------------------------------------
-# Compare dist vs. log10(dist) in prediction 
-#-------------------------------------------------------------------------------
-formula_list <- list(
-  dist = as.formula("loop ~ dist + strandOrientation + score_min + cor_CTCF_lfc"),
-  log10dist = as.formula("loop ~ dist_log10 + strandOrientation + score_min + cor_CTCF_lfc")
-)
-
-mod_list <- formula_list %>% 
-  map(glm, family = binomial(), data = df)
-
-param_list <- mod_list %>% 
-  map(tidy) %>% 
-  map("estimate")
-
-pred_list <- map2(formula_list, param_list, 
-                  ~ chromloop::pred_logit(data = df, formula = .x, betas = .y))
-
-
-mdat <- mmdata(pred_list, labels = list(df$loop, df$loop), modnames = c("dist", "log10_dist"))
-curves <- evalmod(mdat)
-
-p <- autoplot(curves)
-ggsave(p, paste0(outPrefix, ".compare_dist_vs_log10dist.corCTCF_lfc.pdf"))
-#-------------------------------------------------------------------------------
 # split whole data set into EDA and prediction 
 #-------------------------------------------------------------------------------
 
@@ -243,10 +219,11 @@ designDF <- tibble(
   design = map(meta$name, ~as.formula(paste0("loop ~ dist + strandOrientation + score_min + cor_", .x)) )
 )
 
+
 # expand data.frame to have all combinations of model and split
 cvDF <- tidyCV %>% 
   distinct(Fold) %>% 
-  tidyr::expand(name = meta$name, Fold) %>% 
+  tidyr::expand(name = designDF$name, Fold) %>% 
   # add design formular for each TF
   left_join(designDF, by = "name") %>% 
   mutate(id = parse_integer(str_replace(Fold, "^Fold", "")))
@@ -260,50 +237,28 @@ cluster <- cluster %>%
 # partition data set to clusters
 cvDF <- cvDF %>% 
   partition(name, Fold, cluster = cluster) %>% 
-  # fit model on training part
   # fit model and save estimates in tidy format
   mutate(
     tidy_model = map2(Fold, design, .f = tidyer_fitter, 
-                      tidyCV = tidyCV, data = df)
-  )%>% 
-  # collect results from cluster
-  collect()
-
-write_rds(cvDF, path = paste0(outPrefix, "cvDF_trained.rds"))
-# cvDF <- read_rds(paste0(outPrefix, "cvDF_trained.rds"))
-
-# df <- read_feather(paste0(outPrefix, ".df.feather"))
-# tidyCV <- read_feather(paste0(outPrefix, ".tidyCV.feather"))
-# cvDF <- read_rds(paste0(outPrefix, "cvDF_trained.rds"))
-
-#===============================================================================
-# Prediction
-#===============================================================================
-
-# add prediction using individual TF specific models
-cvDF <- cvDF %>%
-  partition(name, Fold, cluster = cluster) %>% 
-  mutate(
+                      tidyCV = tidyCV, data = df),
     pred_specificTF = pmap(
       list(
         map(Fold, tidy_assessment, data = df, tidyCV = tidyCV),
         design,
         map(tidy_model, "estimate")
       ),
-      chromloop::pred_logit
+      chromloop:::predLogit
     ),
     label = map(map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), "loop")
   ) %>% 
-  collect()
-
-# ungroup and get TF as seprate column  
-cvDF <- cvDF %>% 
+  # collect results from cluster
+  collect() %>% 
+  # ungroup  
   ungroup() %>% 
-  mutate(TF = str_replace(name, "_lfc", ""))
+  mutate(TF = name)
 
-# save with predictions
-write_rds(cvDF, path = paste0(outPrefix, "cvDF_specificTFpred.rds"))
-# cvDF <- read_rds(paste0(outPrefix, "cvDF_specificTFpred.rds"))
+write_rds(cvDF, path = paste0(outPrefix, "cvDF.rds"))
+# cvDF <- read_rds(paste0(outPrefix, "cvDF.rds"))
 
 #===============================================================================
 # Performance Evaluation
@@ -315,8 +270,8 @@ evalDF <- cvDF %>%
   ungroup() %>% 
   mutate(
     fold = id,
-    pred = pred_specificTF,
-    modnames = TF
+    pred = pred,
+    modnames = name
   ) %>% 
   select(modnames, fold, pred, label)
 
@@ -363,7 +318,6 @@ write_feather(aucDF, paste0(outPrefix, "aucDF_specificTF.feather"))
 #-------------------------------------------------------------------------------
 TFspecific_ModelDF <- cvDF %>%
   ungroup() %>% 
-  mutate(TF = str_replace(name, "_lfc", "")) %>% 
   select(TF, id, tidy_model) %>%
   unnest(tidy_model) %>% 
   # rename cor_* terms to only cor
@@ -472,16 +426,12 @@ ggsave(p, file = paste0(outPrefix, ".selected_models.paramter.barplot.pdf"), w =
 
 
 #-------------------------------------------------------------------------------
-# Add predictions
-#-------------------------------------------------------------------------------
-
 # Prediction using custom model
+#-------------------------------------------------------------------------------
 
 Rad21mod <- cvDF %>%
   filter(TF == "RAD21", id == 1) %>%
   pull(tidy_model)
-
-Rad21mod <- Rad21mod[[1]]
 
 # defaultDesign <- as.formula("loop ~ dist + strandOrientation + score_min + cor")
 
@@ -498,18 +448,18 @@ cvDF <- cvDF %>%
     pred_allTF = map2(
       .x = map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), 
       .y = design, 
-      .f = pred_logit,
+      .f = chromloop:::predLogit,
       betas = allTfModelDF$estimate_mean),
     # add prediction using N best models
     pred_bestNTF = map2(
       .x = map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), 
       .y = design, 
-      .f = pred_logit,
+      .f = chromloop:::predLogit,
       betas = bestNModelDF$estimate_mean),
     pred_rad21 = map2(
       .x = map(Fold, tidy_assessment, data = df, tidyCV = tidyCV),
       .y = design,
-      .f = pred_logit,
+      .f = chromloop:::predLogit,
       betas = Rad21mod$estimate)
     ) %>% 
   collect()
@@ -775,6 +725,8 @@ topNf1ModelDF <- f1ModelDF %>%
 
 write_tsv(topNf1ModelDF, paste0(outPrefix, ".topNf1ModelDF.tsv"))  
 
-
+# write session info object
+si <- devtools::session_info()
+write_rds(si, paste0(outPrefix, ".session_info.rds"))
 #===============================================================================
 #===============================================================================
