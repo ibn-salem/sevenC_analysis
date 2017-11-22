@@ -3,18 +3,18 @@
 ################################################################################
 
 
-require(chromloop)    # devtools::install_github("ibn-salem/chromloop")
-require(tidyverse)    # for tidy data
-require(stringr)      # for string functions
-require(modelr)       # for tidy modeling
-require(precrec)      # for ROC and PRC curves
-require(RColorBrewer)   # for nice colors
-require(rtracklayer)  # to import() BED files
-require(rsample)
-require(pryr) # for object_size()
-require(feather)      # for efficient storing of data.frames
-require(multidplyr)   # for partition() and collect() to work in parallel
-require(ROCR)         # for binary clasification scores
+library(chromloop)    # devtools::install_github("ibn-salem/chromloop")
+library(tidyverse)    # for tidy data
+library(stringr)      # for string functions
+library(modelr)       # for tidy modeling
+library(precrec)      # for ROC and PRC curves
+library(RColorBrewer)   # for nice colors
+library(rtracklayer)  # to import() BED files
+library(rsample)
+library(pryr) # for object_size()
+library(feather)      # for efficient storing of data.frames
+library(multidplyr)   # for partition() and collect() to work in parallel
+library(ROCR)         # for binary clasification scores
 
 
 source("R/chromloop.functions.R")
@@ -26,7 +26,9 @@ source("R/chromloop.functions.R")
 GI_LOCAL <- FALSE
 N_CORES = parallel::detectCores() - 2
 
-MIN_MOTIF_SIG <- 6
+# MIN_MOTIF_SIG <- 6
+# MIN_MOTIF_SIG <- 5
+MOTIF_PVAL <- 2.5 * 1e-06
 WINDOW_SIZE <- 1000
 BIN_SIZE <- 1
 K = 10  # K-fold corss validation
@@ -45,21 +47,20 @@ COL_TF <- grDevices::colors()[str_detect(grDevices::colors(), "^((?!(gr(a|e)y|wh
 COL_LOOP = brewer.pal(8, "Dark2")[c(8,5)]
 names(COL_LOOP) <- c("No loop", "Loop")
 
-outPrefix <- file.path("results", paste0("v04_screen_TF_lfc.", 
-                                         paste0("motifSig", MIN_MOTIF_SIG), 
+# outPrefix <- file.path("results", paste0("v04_screen_TF_lfc.", 
+#                                          paste0("motifSig", MIN_MOTIF_SIG), 
+#                                          "_w", WINDOW_SIZE, 
+#                                          "_b", BIN_SIZE))
+outPrefix <- file.path("results", paste0("v05_selected_models.", 
+                                         paste0("motifPval", MOTIF_PVAL), 
                                          "_w", WINDOW_SIZE, 
                                          "_b", BIN_SIZE))
 
 dir.create(dirname(outPrefix), showWarnings = FALSE)
 
-# True loops in GM12878 from Rao et al:
-LoopRao2014_GM12878_File <- 
-  "data/Rao2014/GSE63525_GM12878_primary+replicate_HiCCUPS_looplist_with_motifs.txt"
-
-# ChIA-PET loops in GM12878 from Tang et al 2015:
-LoopTang2015_GM12878_Files <- c(
-  "data/Tang2015/GSM1872886_GM12878_CTCF_PET_clusters.txt",
-  "data/Tang2015/GSM1872887_GM12878_RNAPII_PET_clusters.txt")
+# define data candidate path
+dataCandidatesPreifx <- file.path("results", 
+                                  paste0("CTCF_JASPAR.v01.pval_", MOTIF_PVAL))
 
 
 # metadata file
@@ -122,48 +123,8 @@ names(COL_TF) <- meta$TF
 COL_TF[match(SELECTED_TF, names(COL_TF))] <- COL_SELECTED_TF_2
 # meta <- meta[1:3, ]
 
-# Select motifs and parse input data -----------------------------------
-if (!GI_LOCAL) {
-  
-  
-  ancGR <- chromloop::motif.hg19.CTCF
-  
-  # filter for p-valu <= MIN_MOTIF_SIG
-  ancGR <- ancGR[ancGR$sig >= MIN_MOTIF_SIG]
-  
-  seqInfo <- seqinfo(chromloop::motif.hg19.CTCF)
-  
-  # get all pairs within 1M distance
-  gi <- chromloop::getCisPairs(ancGR, maxDist = 10^6)
-  
-  # add strand combinations
-  gi <- chromloop::addStrandCombination(gi)
-  
-  # add motif score
-  gi <- chromloop::addMotifScore(gi, colname = "sig")
-  
-  # parse loops
-  trueLoopsRao <- chromloop::parseLoopsRao(
-    LoopRao2014_GM12878_File, seqinfo = seqInfo)
-  trueLoopsTang2015 <- do.call(
-    "c",
-    lapply(LoopTang2015_GM12878_Files, 
-           chromloop::parseLoopsTang2015, 
-           seqinfo = seqInfo))
-  
-
-  # ol <- IRanges::overlapsAny(gi, trueLoops)
-  # gi$Loop_Rao_GM12878 <- factor(ol, c(FALSE, TRUE), c("No loop", "Loop"))
-  
-  gi <- addInteractionSupport(gi, trueLoopsRao, "Loop_Rao_GM12878")
-  gi <- addInteractionSupport(gi, trueLoopsTang2015, "Loop_Tang2015_GM12878")
-  
-  # save file for faster reload
-  save(gi, file = paste0(outPrefix, ".gi.tmp.Rdata"))
-  
-}else{
-  load(paste0(outPrefix, ".gi.tmp.Rdata"))  
-}
+# read preprocessed CTCF moitf pairs as candidates
+gi <- read_rds(paste0(dataCandidatesPreifx, ".gi.rds"))
 
 # Annotae with coverage and correlation -------------------------------------
 
@@ -172,48 +133,31 @@ if (!GI_LOCAL ) {
   # iterate over all ChIP-seq sata sets
   for (i in seq_len(nrow(meta))) {
     
-    # check if sample is not present yet.
-    if ( !paste0("cor_", meta$name[i]) %in% names(mcols(gi))){
-      
-      message("INFO: --> Working on sample: ", meta$name[i], ", ", i, " of ", nrow(meta), " <--")
-      
-      # add coverage  
-      regions(gi) <- chromloop::addCovToGR(
-        regions(gi), 
-        meta$filePath[i], 
-        window = WINDOW_SIZE,
-        bin_size = BIN_SIZE,
-        colname = paste0("cov_", meta$name[i])
-      )
-      
-      # add correlations
-      gi <- chromloop::applyToCloseGI(
-        gi, 
-        datcol = paste0("cov_", meta$name[i]),
-        fun = cor, 
-        colname = paste0("cor_", meta$name[i])
-      )  
-  
-    }
+    message("INFO: --> Working on sample: ", meta$name[i], ", ", i, " of ", nrow(meta), " <--")
+    
+    #add coverage and correlation of coverage
+    gi <- addCor(
+      gi,
+      meta$filePath[[i]],
+      meta$name[[i]],
+    )
   }  
   # Annotae with correlation across TFs -------------------------------------
   
   # get vector with coverage in whole anchor regions
-  covCols <- paste0("cov_", meta$name)
+  covCols <- meta$name
   covDF <- as_tibble(as.data.frame(mcols(regions(gi))[,covCols])) %>% 
     dplyr::mutate_all(.funs = function(l) map_dbl(l, sum))
   
   mcols(regions(gi))[, "cov_sum"] <- NumericList(as_tibble(t(covDF)))
   
-  gi <- chromloop::applyToCloseGI(
+  gi <- addCovCor(
     gi, 
-    datcol = "cov_sum",
-    fun = cor, 
-    colname = "cor_across_TFs"
+    datacol = "cov_sum",
+    colname = "across_TFs"
   )
   
   # save file for faster reload
-  # save(gi, file = paste0(outPrefix, ".gi.Rdata"))
   write_rds(gi, paste0(outPrefix, ".gi.rds"))
   
 } else {
@@ -227,18 +171,10 @@ if (!GI_LOCAL ) {
 #-------------------------------------------------------------------------------
 
 df <- as_tibble(as.data.frame(mcols(gi))) %>%
-  mutate(
-    id = 1:nrow(.),
-    loop = factor(
-      Loop_Tang2015_GM12878 == "Loop" | Loop_Rao_GM12878 == "Loop",
-      c(FALSE, TRUE),
-      c("No loop", "Loop"))
-  ) %>% 
+  mutate( id = 1:nrow(.)) %>% 
   select(id, loop, everything()) 
 
-# save(df, file = paste0(outPrefix, ".df.Rdata")) 
 write_feather(df, paste0(outPrefix, ".df.feather"))
-# load(paste0(outPrefix, ".df.Rdata"))
 # df <- read_feather(paste0(outPrefix, ".df.feather"))
 
 #-------------------------------------------------------------------------------
