@@ -14,6 +14,7 @@ library(readr)        # for write_rds()
 # Parameters ----
 #*******************************************************************************
 MOTIF_PVAL <- 2.5 * 1e-06
+SHAPE_WINDOW = 500
 
 JASPAR_HG19_CTCF <- "data/JASPAR2018/MA0139.1.tsv"
 
@@ -148,7 +149,7 @@ addShapeToGR <- function(gr, BSgenome, width = 100,
 shapeTypes <- c("MGW", "HelT", "ProT", "Roll", "EP", "Opening", "Rise", 
                 "Shift", "Stagger", "Slide")
 regions(gi) <- addShapeToGR(regions(gi), BSgenome.Hsapiens.UCSC.hg19, 
-                            width = 100, shapeTypes = shapeTypes)
+                            width = SHAPE_WINDOW, shapeTypes = shapeTypes)
 
 # add correlation of chape predictions
 for (TYPE in shapeTypes) {
