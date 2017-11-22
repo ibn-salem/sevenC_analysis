@@ -469,3 +469,29 @@ ggsave(p, file = paste0(outPrefix, ".EDA.cor.by_TF_and_loop.boxplot.pdf"), w = 7
 
 
 
+#-------------------------------------------------------------------------------
+# Compare dist vs. log10(dist) in prediction 
+#-------------------------------------------------------------------------------
+stop("Stop here. Needs to be reimplemented.")
+formula_list <- list(
+  dist = as.formula("loop ~ dist + strandOrientation + score_min + cor_CTCF_lfc"),
+  log10dist = as.formula("loop ~ dist_log10 + strandOrientation + score_min + cor_CTCF_lfc")
+)
+
+mod_list <- formula_list %>% 
+  map(glm, family = binomial(), data = df)
+
+param_list <- mod_list %>% 
+  map(tidy) %>% 
+  map("estimate")
+
+pred_list <- map2(formula_list, param_list, 
+                  ~ chromloop::pred_logit(data = df, formula = .x, betas = .y))
+
+
+mdat <- mmdata(pred_list, labels = list(df$loop, df$loop), modnames = c("dist", "log10_dist"))
+curves <- evalmod(mdat)
+
+p <- autoplot(curves)
+ggsave(p, paste0(outPrefix, ".compare_dist_vs_log10dist.corCTCF_lfc.pdf"))
+
