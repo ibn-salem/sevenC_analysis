@@ -270,7 +270,7 @@ evalDF <- cvDF %>%
   ungroup() %>% 
   mutate(
     fold = id,
-    pred = pred,
+    pred = pred_specificTF,
     modnames = name
   ) %>% 
   select(modnames, fold, pred, label)
@@ -432,6 +432,7 @@ ggsave(p, file = paste0(outPrefix, ".selected_models.paramter.barplot.pdf"), w =
 Rad21mod <- cvDF %>%
   filter(TF == "RAD21", id == 1) %>%
   pull(tidy_model)
+Rad21mod <- Rad21mod[[1]]
 
 # defaultDesign <- as.formula("loop ~ dist + strandOrientation + score_min + cor")
 
