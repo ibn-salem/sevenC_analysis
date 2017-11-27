@@ -677,6 +677,28 @@ wget -P EnhancerAtlas http://enhanceratlas.org/Data_format_EP.txt
 
 wget -P EnhancerAtlas --input-file=EnhancerAtlas_EP_cell-lines_urls.txt
 
+#=======================================================================
+# NeuroD1 ChIP-seq and expression data in mouse
+#=======================================================================
+mkdir -p Pataskar2016
+
+# download ChIP-seq input control
+wget -P Pataskar2016 ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE65nnn/GSE65072/suppl/GSE65072%5FInput%2Ewig%2Egz
+# download NeuoD1 ChIP
+wget -P Pataskar2016 ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE65nnn/GSE65072/suppl/GSE65072%5FNeuroD1%5FmergedReplicates%2Ewig%2Egz
+
+# download differential expression (plus DOX vs. minus DOX)
+wget -P Pataskar2016 ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE65nnn/GSE65072/suppl/GSE65072%5FDESeq%5FplusDOX%5FminusDOX%2Exlsx
+
+gunzip Pataskar2016/*.gz
+# manually copy the files (from Email form Abhijeet Pataskar from 09.11.17)
+# NeuroD1.sam.bam_sort.bam_peaks.encodePeak
+# TSS_order.bed
+# DIST_order.bed
+
+# copy manually CTCF motifs in mm9 and mm10 from JASPAR (Email from Oriol FornÃ©s 10.11.2017)
+# JASPAR2018/MA0139.1.mm9.sorted.bed
+# JASPAR2018/MA0139.1.mm10.sorted.bed
 
 #=======================================================================
 # DNA shape from GBshape
