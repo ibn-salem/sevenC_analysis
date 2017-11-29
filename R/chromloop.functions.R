@@ -77,18 +77,29 @@ tidy_assessment <- function(fold, data, tidyCV){
 #' http://wiki.wubrowse.org/Long-range
 #'
 #' @param gi
-#' @param score Name of a score column in \code{gi}.
+#' @param score_vec Numeric vector of the same length as \cod{gi}. It will be
+#'   used as score in output fiel.
 #' @param output_file Path to output file.
 #'   
 writeLongRangeFormat <- function(gi, score_vec, output_file){
   
-  gr1 <- anchors(gi, "first")
-  gr2 <- anchors(gi, "second")
-  # score_vec <- mcols(gi)[, score]
+  chr <- seqnames(regions(gi))
+  s <- start(regions(gi))
+  e <- end(regions(gi))
   
-  str1 <- str_c(seqnames(gr1), start(gr1), end(gr1), sep = ",")
-  str2 <- str_c(seqnames(gr2), start(gr2), end(gr2), sep = ",")
+  # get indexes of anchor regions
+  idx1 <- anchors(gi, type = "first", id = TRUE)
+  idx2 <- anchors(gi, type = "second", id = TRUE)
   
+  # gr1 <- anchors(gi, "first")
+  # gr2 <- anchors(gi, "second")
+  # # score_vec <- mcols(gi)[, score]
+  
+  # str1 <- str_c(seqnames(gr1), start(gr1), end(gr1), sep = ",")
+  # str2 <- str_c(seqnames(gr2), start(gr2), end(gr2), sep = ",")
+  str1 <- str_c(chr[idx1], s[idx1], e[idx1], sep = ",")
+  str2 <- str_c(chr[idx2], s[idx2], e[idx2], sep = ",")
+
   outDF <- tibble(
     gr1 = str1, 
     gr2 = str2, 
