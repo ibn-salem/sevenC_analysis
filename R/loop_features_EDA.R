@@ -205,8 +205,6 @@ write_tsv(countsDF, path = paste0(outPrefix, ".positives.countsDF.tsv"))
 
 
 # ---------------- Pie chart of percent positives ---------------------
-
-
 nDF <- df %>% 
   group_by(loop) %>% 
   summarize(
@@ -327,15 +325,21 @@ covList <- mcols(regions(gi))[, FACT]
 bothSupport <- gi$Loop_Rao_GM12878  == "Loop" & gi$Loop_Tang2015_GM12878 == "Loop"
 bothNoSupport <- gi$Loop_Rao_GM12878  != "Loop" & gi$Loop_Tang2015_GM12878 != "Loop"
 
-rand_examples = c(
-  sample(which(bothSupport), N_EXAMPLE),
-  sample(which(bothNoSupport), N_EXAMPLE)
-)
+# rand_examples = c(
+#   sample(which(bothSupport), N_EXAMPLE),
+#   sample(which(bothNoSupport), N_EXAMPLE)
+# )
 
 # rand_examples = c(
 #   379220, 357242, 16818,
 #   163948, 69243, 214045, 
 # )
+# fix to selected examples
+rand_examples = c(
+  346768, 362508, 26601,
+  71035 , 247338, 173202
+)
+
 write_rds(rand_examples, paste0(outPrefix, ".rand_examples.rds"))
 
 # Loop examples : 357242, 16818, 452694, 379220
@@ -421,7 +425,7 @@ p = ggplot(filter(subAncDF, reg == 1), aes(x = up, y = down, color = pos)) +
   facet_grid(reg ~ loop, scales = "free") +
   geom_text(aes(x = max(subAncDF$up, na.rm = TRUE), y = 1, 
                 label = paste0("R=", round(R, 2))),
-            data =filter(corDF, reg == 1), color = "black",
+            data = filter(corDF, reg == 1), color = "black",
             vjust = "inward", hjust = "inward", size = 7.5) +
   theme_bw() + theme(strip.text.y = element_blank(), 
                      axis.title.x = element_text(face = "bold", color = COL_ANCHOR[1]),
@@ -460,38 +464,41 @@ p <- ggplot(tidyDF, aes(x = name, y = cor, col = loop)) +
   scale_color_manual(values = COL_LOOP, guide_legend(title = "")) +
   theme_bw() + 
   theme(
-    text = element_text(size=20),
+    text = element_text(size = 20),
     # axis.text.x=element_blank(), 
     legend.position = "bottom",
     axis.text.x = element_text(angle = 60, hjust = 1)) + 
-  labs(y = "ChIP-seq\n Correlation", x="")
+  labs(y = "ChIP-seq\n Correlation", x = "")
 ggsave(p, file = paste0(outPrefix, ".EDA.cor.by_TF_and_loop.boxplot.pdf"), w = 7, h = 3.5)
 
 
+#*******************************************************************************
+# Compare dist vs. log10(dist) in prediction ----------
+#*******************************************************************************
 
-#-------------------------------------------------------------------------------
-# Compare dist vs. log10(dist) in prediction 
-#-------------------------------------------------------------------------------
-stop("Stop here. Needs to be reimplemented.")
+df$dist_log10 <- log10(df$dist)
+
 formula_list <- list(
-  dist = as.formula("loop ~ dist + strandOrientation + score_min + cor_CTCF_lfc"),
-  log10dist = as.formula("loop ~ dist_log10 + strandOrientation + score_min + cor_CTCF_lfc")
+  dist = as.formula("loop ~ dist + strandOrientation + score_min + cor_CTCF"),
+  log10dist = as.formula("loop ~ dist_log10 + strandOrientation + score_min + cor_CTCF")
 )
 
 mod_list <- formula_list %>% 
   map(glm, family = binomial(), data = df)
 
 param_list <- mod_list %>% 
-  map(tidy) %>% 
+  map(broom::tidy) %>% 
   map("estimate")
 
 pred_list <- map2(formula_list, param_list, 
-                  ~ chromloop::pred_logit(data = df, formula = .x, betas = .y))
+                  ~chromloop:::predLogit(data = df, formula = .x, betas = .y))
 
+mdat <- precrec::mmdata(pred_list, labels = list(df$loop, df$loop), modnames = c("dist", "log10_dist"))
+curves <- precrec::evalmod(mdat)
 
-mdat <- mmdata(pred_list, labels = list(df$loop, df$loop), modnames = c("dist", "log10_dist"))
-curves <- evalmod(mdat)
+p <- autoplot(curves, curvetype = "ROC")
+ggsave(paste0(outPrefix, ".compare_dist_vs_log10dist.corCTCF.ROC.pdf"), w = 3, h = 3)
 
-p <- autoplot(curves)
-ggsave(p, paste0(outPrefix, ".compare_dist_vs_log10dist.corCTCF_lfc.pdf"))
+p <- autoplot(curves, curvetype = "PRC")
+ggsave(paste0(outPrefix, ".compare_dist_vs_log10dist.corCTCF.PRC.pdf"), w = 3, h = 3)
 
