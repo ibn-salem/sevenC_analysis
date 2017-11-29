@@ -18,7 +18,6 @@ library(ROCR)         # for binary clasification metrices
 
 source("R/chromloop.functions.R")
 
-
 # 0) Set parameter --------------------------------------------------------
 
 # use previously saved gi object?
@@ -32,20 +31,7 @@ BIN_SIZE <- 1
 K = 10  # K-fold corss validation
 N_TOP_MODELS = 10
 
-# lfcPrefix <- file.path("results", paste0("v04_screen_TF_lfc.", 
-#                                          paste0("motifSig", MIN_MOTIF_SIG), 
-#                                          "_w", WINDOW_SIZE, 
-#                                          "_b", BIN_SIZE))
 
-
-# outPrefixOld <- file.path("results", paste0("v04_selected_models.", 
-#                                          paste0("motifSig", MIN_MOTIF_SIG), 
-#                                          "_w", WINDOW_SIZE, 
-#                                          "_b", BIN_SIZE))
-# outPrefix <- file.path("results", paste0("v05_selected_models.", 
-#                                          paste0("motifSig", MIN_MOTIF_SIG), 
-#                                          "_w", WINDOW_SIZE, 
-#                                          "_b", BIN_SIZE))
 outPrefix <- file.path("results", paste0("v05_selected_models.", 
                                          paste0("motifPval", MOTIF_PVAL), 
                                          "_w", WINDOW_SIZE, 
@@ -56,6 +42,12 @@ dir.create(dirname(outPrefix), showWarnings = FALSE)
 # define data candidate path
 dataCandidatesPreifx <- file.path("results", 
                                   paste0("CTCF_JASPAR.v01.pval_", MOTIF_PVAL))
+
+# v05_screen_TF_lfc.motifPval2.5e-06_w1000_b1
+screenPrefix <- file.path("results", paste0("v05_screen_TF_lfc.", 
+                                            paste0("motifPval", MOTIF_PVAL), 
+                                            "_w", WINDOW_SIZE, 
+                                            "_b", BIN_SIZE))
 
 
 # True loops in GM12878 from Rao et al:
@@ -126,8 +118,7 @@ meta <- meta %>%
 
 
 write_tsv(meta, paste0(outPrefix, ".meta.tsv"))
-# meta <- read_tsv("results/v04_selected_models.motifSig6_w1000_b1.meta.tsv")
-# meta <- meta[1:3, ]
+# meta <- read_tsv(paste0(outPrefix, ".meta.tsv"))
 
 # Select motifs and parse input data -----------------------------------
 
@@ -178,27 +169,9 @@ if (!GI_LOCAL ) {
   gi <- read_rds(paste0(outPrefix, ".gi.rds"))
 }
 
-# #*******************************************************************************
-# # DEBUG difference to old analysis ----
-# #*******************************************************************************
-# 
-# giOld <- read_rds(paste0(outPrefixOld, ".gi.rds"))
-# giOld$loop <- factor(
-#   giOld$Loop_Tang2015_GM12878 == "Loop" | giOld$Loop_Rao_GM12878 == "Loop",
-#   c(FALSE, TRUE),
-#   c("No loop", "Loop")
-# )
-# 
-# boxplot(cor_STAT1 ~ loop, data = mcols(gi))
-# boxplot(cor_STAT1 ~ loop, data = mcols(giOld))
-# boxplot(cor_RAD21 ~ loop, data = mcols(gi))
-# 
-# identical(gi$cor_STAT1, giOld$cor_STAT1)
-
 #-------------------------------------------------------------------------------
 # Analyse loopps --------------------------------------------------------
 #-------------------------------------------------------------------------------
-
 df <- as_tibble(as.data.frame(mcols(gi))) %>%
   mutate(
     id = 1:nrow(.)
@@ -267,13 +240,14 @@ cvDF <- tidyCV %>%
 
 
 # copy object to each cluster node
-cluster <- cluster %>% 
-  cluster_copy(tidyCV) %>% 
-  cluster_copy(df)
+# cluster <- cluster %>% 
+#   cluster_copy(tidyCV) %>% 
+#   cluster_copy(df)
 
 # partition data set to clusters
 cvDF <- cvDF %>% 
-  partition(name, Fold, cluster = cluster) %>% 
+  # partition(name, Fold, cluster = cluster) %>%
+  group_by(name, Fold) %>% 
   # fit model on training part
   # fit model and save estimates in tidy format
   mutate(
@@ -290,8 +264,8 @@ cvDF <- cvDF %>%
     label = map(map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), "loop")
   ) %>% 
   # collect results from cluster
-  collect() %>% 
-  # ungroup  
+  # collect() %>% 
+  # ungroup
   ungroup()
 
 write_rds(cvDF, path = paste0(outPrefix, "cvDF.rds"))
@@ -467,45 +441,53 @@ for (subStr in names(subsetList)){
   
 }
 
-#-------------------------------------------------------------------------------
-# Binary prediction
-#-------------------------------------------------------------------------------
-stop("Stop here!")
-# TODO FROM HERE!
+#*******************************************************************************
+# Binary prediction ------
+#*******************************************************************************
+# gi <- read_rds(paste0(outPrefix, ".gi.rds"))
 
-# add predictions using RAD21 model
-gi <- gi %>% 
-  predLoops(
-  formula = loop ~ dist + strandOrientation + score_min + cor_RAD21
-  
-)
+# read TF specific models
+TFspecific_ModelDF <- read_tsv(paste0(screenPrefix, ".TFspecific_ModelDF.tsv"))
 
-mcols(gi)$pred_Rad21 <- pred_logit(
-  df, 
-  as.formula("loop ~ dist + strandOrientation + score_min + cor_RAD21"),
-  Rad21_model)
+Rad21_model <- TFspecific_ModelDF %>% 
+  filter(TF == "RAD21")
 
-Rad21_cutof <- read_rds(paste0(lfcPrefix, ".f1ModelDF.rds")) %>% 
+Rad21_cutof <- read_rds(paste0(screenPrefix, ".f1ModelDF.rds")) %>% 
   filter(TF == "RAD21") %>% 
   pull(max_cutoff)
 
-# add binary predictions
-mcols(gi)$predBinary_Rad21 <- mcols(gi)$pred_Rad21 >= Rad21_cutof
-    
-chr22 <- GRanges(seqinfo(gi))["chr22"]
-subGI <- subsetByOverlaps(gi, chr22, ignore.strand = TRUE)
+# add predictions using RAD21 model
+gi <- predLoops(
+  gi,
+  formula = loop ~ dist + strandOrientation + score_min + cor_RAD21,
+  betas = Rad21_model$estimate_mean,
+  colname = "pred_Rad21",
+  cutoff = NULL
+)
 
+# add binary predictions
+mcols(gi)$predBinary_Rad21 <- !is.na(mcols(gi)$pred_Rad21) & mcols(gi)$pred_Rad21 >= Rad21_cutof
+
+#*******************************************************************************
+# Write genome browser tracks   -----
+#*******************************************************************************
+
+# chr22 <- GRanges(seqinfo(gi))["chr22"]
+# chr22GI <- subsetByOverlaps(gi, chr22, ignore.strand = TRUE)
+
+onChr22 <- seqnames(regions(gi))[anchors(gi, type = "first", id = TRUE)] == "chr22"
+chr22GI <- gi[onChr22]
 # write all chr22 pairs (with labeld true ones)
 writeLongRangeFormat(
-  gi = subGI, 
-  score_vec = ifelse(mcols(subGI)$loop == "Loop", 1, -1), 
+  gi = chr22GI, 
+  score_vec = ifelse(mcols(chr22GI)$loop == "Loop", 1, -1), 
   output_file = paste0(outPrefix, ".gi.loop.chr22.longrange.txt")
   )
 
 # write all chr22 pairs (with labeld predictions)
 writeLongRangeFormat(
-  gi = subGI, 
-  score_vec = ifelse(!is.na(mcols(subGI)$predBinary_Rad21) & mcols(subGI)$predBinary_Rad21, 1, -1), 
+  gi = chr22GI, 
+  score_vec = ifelse(chr22GI$predBinary_Rad21, 1, -1), 
   output_file = paste0(outPrefix, ".gi.pred_Rad21.chr22.longrange.txt")
 )
 
@@ -518,7 +500,7 @@ writeLongRangeFormat(
 )
 
 # write only subset of predicted loops
-rad21GI <- gi[!is.na(gi$predBinary_Rad21) & gi$predBinary_Rad21]
+rad21GI <- gi[gi$predBinary_Rad21]
 writeLongRangeFormat(
   gi = rad21GI, 
   score_vec = 100 * rad21GI$pred_Rad21, 
@@ -532,7 +514,6 @@ writeLongRangeFormat(
   score_vec = ifelse(mcols(gi)$loop == "Loop", 1, -1), 
   output_file = paste0(outPrefix, ".gi.loop.longrange.txt")
 )
-
 
 #===============================================================================
 #===============================================================================
