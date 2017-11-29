@@ -2,6 +2,10 @@
 
 #' Extend interaction anchors with specific term for inner and outer site
 #'
+#' Note, this functions removes all metadata colums from the
+#' \code{\link{GInteractions}} and its anchor regions.
+#' 
+#' 
 #' @param gi \code{\link{GInteractions}} or \code{\link{InteractionSet}} object
 #' @param inner,outer A scalar, non-negative, of the extension sizes for anchor
 #'   ends outside and inside interaction loops.
@@ -11,34 +15,25 @@
 #'   anchors and distance in log10 space, respectively.
 extendAnchors <- function(gi, inner, outer){
   
-  # turn gi into GIntreactions
-  gi <- methods::as(gi, "GInteractions")
-  GenomicRanges::strand(InteractionSet::regions(gi)) <- "*"
-  gi <- InteractionSet::swapAnchors(gi, mode = "order")
+  anchrosGR <- regions(gi)
+  mcols(anchrosGR) <- NULL
   
-  # extend ranges of anchors
-  anc1 <- InteractionSet::anchors(gi, "first")
-  GenomicRanges::start(anc1) = GenomicRanges::start(anc1) - outer
-  # extend end coordinate of fist anchor but only until start of second
-  GenomicRanges::end(anc1) <- pmin(
-    GenomicRanges::end(anc1) + inner,
-    pmax(GenomicRanges::start(InteractionSet::anchors(gi, "second")) - 1, GenomicRanges::end(anc1))
-  )
+  upAnc <- anchrosGR[anchors(gi, type = "first", id = TRUE)]
+  downAnc <- anchrosGR[anchors(gi, type = "second", id = TRUE)]
   
-  anc2 <- InteractionSet::anchors(gi, "second")
-  # extend start coordinate of second anchor but only until end of first
-  GenomicRanges::start(anc2) <- pmax(
-    GenomicRanges::start(anc2) - inner,
-    pmin(GenomicRanges::end(InteractionSet::anchors(gi, "first")) + 1, GenomicRanges::start(anc2))
-  )
-  GenomicRanges::end(anc2) = GenomicRanges::end(anc2) + outer
+  # extend upstream anchro range
+  start(upAnc) <- start(upAnc) - outer
+  end(upAnc) <- end(upAnc) + inner
   
-  extendedGI <- InteractionSet::GInteractions(anc1, anc2)
-  S4Vectors::mcols(extendedGI) <- S4Vectors::mcols(gi)
+  # extend downstream anchor range
+  start(downAnc) <- start(downAnc) - inner
+  end(downAnc) <- end(downAnc) + outer
   
-  return(extendedGI)
+  extGI <- InteractionSet::GInteractions(upAnc, downAnc)
+  
+  return(extGI)
 }
-
+  
 
 
 #' Get genomic ranges spanned by (intracrhomosomal) interactions.
@@ -93,22 +88,23 @@ interactionRange <- function(gi){
 
 
 
-#' Associate two sets of regions together by interactions with ajusted anchors
+#' Associate two sets of regions together by interactions and direct overlap
 #'
 #' @param gr1 A GRanges object.
 #' @param gr2 A GRanges object.
 #' @param gi A \code{\link[InteractionSet]{GInteractions}} or
 #'   \code{\link[InteractionSet]{InteractionSet}} object.
-#' @param outer_maxgap A scalar, non-negative, maxial allowed distance outside
+#' @param outer_maxgap A scalar, non-negative, maximal allowed distance outside
 #'   interaction loops to be considered as overlap.
-#' @param inner_maxgap A scalar, non-negative, maxial allowed distance inside
+#' @param inner_maxgap A scalar, non-negative, maximal allowed distance inside
 #'   interaction loops to be considered as overlap.
 #' @param ... Other arguments passed to
 #'   \code{\link[GenomicRanges]{findOverlaps}} and
 #'   \code{\link[InteractionSet]{linkOverlaps}}
 #'
-#' @return A dataframe of integer indices indicating which elements of
-#'   \code{gr1} link which elements of \code{gr1}.
+#' @return A tibble of integer indices indicating which elements of \code{gr1}
+#'   link which elements of \code{gr1} by interaction \code{gi} (NA if direct
+#'   overlap).
 #'
 #' @export
 linkRegions <- function(gr1, gr2, gi, outer_maxgap = 0, inner_maxgap = 0, ...){
@@ -123,19 +119,19 @@ linkRegions <- function(gr1, gr2, gi, outer_maxgap = 0, inner_maxgap = 0, ...){
   links <- InteractionSet::linkOverlaps(gi, gr1, gr2, ...)
 
   # take only gr1 and gr2 indices and rename to match direct overlap
-  olDF <- as.data.frame(ol)
-  names(olDF) <- c("gr1", "gr2")
-  olDF[, "gi"] <- NA
-
-  linksDF <- data.frame(links)
-  names(linksDF) <- c("gi", "gr1", "gr2")
-
-  # combine direct overlaps and links via interactions
-  hits <- rbind(
-    olDF,
-    linksDF
-  )
-
+  olDF <- ol %>% 
+    as.data.frame() %>% 
+    as.tibble() %>% 
+    rename(gr1 = queryHits, gr2 = subjectHits) %>% 
+    mutate(gi = NA)
+  
+  linksDF <- links %>% 
+    as.data.frame() %>% 
+    as.tibble() %>% 
+    rename(gi = query, gr1 = subject1, gr2 = subject2)
+    
+  hits <- bind_rows(olDF, linksDF)
+  
   return(hits)
 }
 
@@ -155,33 +151,32 @@ linkRegions <- function(gr1, gr2, gi, outer_maxgap = 0, inner_maxgap = 0, ...){
 #' @export
 linkRegionsInLoops <- function(gr1, gr2, gi, ...){
 
-  # get direct overlapping elements
-  ol <- GenomicRanges::findOverlaps(gr1, gr2, ...)
-
   # get range of all looping interactions
   loopGR <- interactionRange(gi)
 
-  gr1Hits <- data.frame(GenomicRanges::findOverlaps(gr1, loopGR))
-  gr1Hits <- dplyr::rename(gr1Hits, gr1 = queryHits)
+  gr1Hits <- GenomicRanges::findOverlaps(gr1, loopGR) %>% 
+    data.frame() %>% as.tibble() %>% 
+    rename(gr1 = queryHits)
 
-  gr2Hits <- data.frame(GenomicRanges::findOverlaps(gr2, loopGR))
-  gr2Hits <- dplyr::rename(gr2Hits, gr2 = queryHits)
+  gr2Hits <- GenomicRanges::findOverlaps(gr2, loopGR) %>% 
+    data.frame() %>% as.tibble() %>% 
+    rename(gr2 = queryHits)
+  
+  # gr2Hits <- data.frame(GenomicRanges::findOverlaps(gr2, loopGR))
+  # gr2Hits <- dplyr::rename(gr2Hits, gr2 = queryHits)
 
   # link reginos by
-  linksDF <- dplyr::left_join(gr1Hits, gr2Hits, by = "subjectHits")
-  linksDF <- dplyr::select(linksDF, gi = subjectHits, gr1, gr2)
+  linksDF <- left_join(gr1Hits, gr2Hits, by = "subjectHits") %>% 
+    select(gi = subjectHits, gr1, gr2)
 
-
-  # take only gr1 and gr2 indices and rename to match direct overlap
-  olDF <- data.frame(ol)
-  names(olDF) <- c("gr1", "gr2")
-  olDF[, "gi"] <- NA
-
+  # get direct overlapping elements
+  olDF <- GenomicRanges::findOverlaps(gr1, gr2, ...) %>% 
+    as.data.frame() %>% as.tibble() %>% 
+    mutate(gi = NA) %>% 
+    select(gi, gr1 = queryHits, gr2 = subjectHits)
+  
   # combine direct overlaps and links via interactions
-  hits <- rbind(
-    olDF,
-    linksDF
-  )
+  hits <- bind_rows(olDF, linksDF)
 
   return(hits)
 }
