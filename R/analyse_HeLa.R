@@ -22,35 +22,33 @@ source("R/chromloop.functions.R")
 
 # use previously saved gi object?
 GI_LOCAL <- FALSE
-N_CORES = parallel::detectCores() - 2
+N_CORES = min(10, parallel::detectCores() - 1)
 
-MIN_MOTIF_SIG <- 6
+# MIN_MOTIF_SIG <- 5
+MOTIF_PVAL <- 2.5 * 1e-06
 WINDOW_SIZE <- 1000
 BIN_SIZE <- 1
 K = 10  # K-fold corss validation
 N_TOP_MODELS = 10
 
-outPrefix <- file.path("results", paste0("v04_HeLa.", 
-                                         paste0("motifSig", MIN_MOTIF_SIG), 
+# define data candidate path
+dataCandidatesPreifx <- file.path("results", 
+                                  paste0("CTCF_JASPAR.v01.pval_", MOTIF_PVAL))
+
+outPrefix <- file.path("results", paste0("v05_HeLa.", 
+                                         paste0("motifPval", MOTIF_PVAL), 
                                          "_w", WINDOW_SIZE, 
                                          "_b", BIN_SIZE))
 
-modelPrefix <- file.path("results", paste0("v04_screen_TF_lfc.", 
-                                           paste0("motifSig", MIN_MOTIF_SIG), 
-                                           "_w", WINDOW_SIZE, 
-                                           "_b", BIN_SIZE))
-
 dir.create(dirname(outPrefix), showWarnings = FALSE)
 
-# True loops in HeLa from Rao et al:
-LoopRao2014_HeLa_File <- 
-  "data/Rao2014/GSE63525_HeLa_HiCCUPS_looplist_with_motifs.txt"
 
-# ChIA-PET loops in GM12878 from Tang et al 2015:
-LoopTang2015_HeLa_Files <- c(
-  "data/Tang2015/GSM1872888_HeLa_CTCF_PET_clusters.txt",
-  "data/Tang2015/GSM1872889_HeLa_RNAPII_PET_clusters.txt")
 
+# v05_screen_TF_lfc.motifPval2.5e-06_w1000_b1
+screenPrefix <- file.path("results", paste0("v05_screen_TF_lfc.", 
+                                            paste0("motifPval", MOTIF_PVAL), 
+                                            "_w", WINDOW_SIZE, 
+                                            "_b", BIN_SIZE))
 
 # metadata file
 metaFile <- "data/ENCODE/metadata.fc_HELA_selected.tsv"
@@ -69,18 +67,6 @@ COL_SELECTED_TF_1 = brewer.pal(12, "Paired")[c(1, 3, 5, 7, 9, 11)]
 COL_SELECTED_TF_2 = brewer.pal(12, "Paired")[c(2, 4, 6, 8, 10, 12)]
 names(COL_SELECTED_TF_1) <- SELECTED_TF
 names(COL_SELECTED_TF_2) <- SELECTED_TF
-
-#-------------------------------------------------------------------------------
-# setup cluster
-#-------------------------------------------------------------------------------
-
-# # partion data for parallel processing
-# cluster <- create_cluster(N_CORES) %>% 
-#   cluster_library(packages = c("chromloop", "tidyverse"))
-# 
-# # evaluate help function code on each cluster
-# cluster_eval(cluster, source("R/chromloop.functions.R"))
-
 
 #-------------------------------------------------------------------------------
 # Parse and filter input ChiP-seq data  -----------------------------------
@@ -110,42 +96,9 @@ meta <- meta %>%
 # meta <- meta[1:3, ]
 
 # Select motifs and parse input data -----------------------------------
-if (!GI_LOCAL) {
-  
-  ancGR <- chromloop::motif.hg19.CTCF
-  
-  # filter for p-valu <= MIN_MOTIF_SIG
-  ancGR <- ancGR[ancGR$sig >= MIN_MOTIF_SIG]
-  
-  seqInfo <- seqinfo(chromloop::motif.hg19.CTCF)
-  
-  # get all pairs within 1M distance
-  gi <- chromloop::getCisPairs(ancGR, maxDist = 10^6)
-  
-  # add strand combinations
-  gi <- chromloop::addStrandCombination(gi)
-  
-  # add motif score
-  gi <- chromloop::addMotifScore(gi, colname = "sig")
-  
-  # parse loops
-  trueLoopsRao <- chromloop::parseLoopsRao(
-    LoopRao2014_HeLa_File, seqinfo = seqInfo)
-  trueLoopsTang2015 <- do.call(
-    "c",
-    lapply(LoopTang2015_HeLa_Files, 
-           chromloop::parseLoopsTang2015, 
-           seqinfo = seqInfo))
-  
-  gi <- addInteractionSupport(gi, trueLoopsRao, "Loop_Rao_HeLa")
-  gi <- addInteractionSupport(gi, trueLoopsTang2015, "Loop_Tang2015_HeLa")
-  
-  # save file for faster reload
-  save(gi, file = paste0(outPrefix, ".gi.tmp.Rdata"))
-  
-}else{
-  load(paste0(outPrefix, ".gi.tmp.Rdata"))  
-}
+
+# read CTCF moitf pairs as candidates
+gi <- read_rds(paste0(dataCandidatesPreifx, ".gi.rds"))
 
 # Annotae with coverage and correlation -------------------------------------
 
@@ -154,52 +107,34 @@ if (!GI_LOCAL ) {
   # iterate over all ChIP-seq sata sets
   for (i in seq_len(nrow(meta))) {
     
-    # check if sample is not present yet.
-    if ( !paste0("cor_", meta$name[i]) %in% names(mcols(gi))){
-      
-      message("INFO: --> Working on sample: ", meta$name[i], ", ", i, " of ", nrow(meta), " <--")
-      
-      # add coverage  
-      regions(gi) <- chromloop::addCovToGR(
-        regions(gi), 
-        meta$filePath[i], 
-        window = WINDOW_SIZE,
-        bin_size = BIN_SIZE,
-        colname = paste0("cov_", meta$name[i])
-      )
-      
-      # add correlations
-      gi <- chromloop::applyToCloseGI(
-        gi, 
-        datcol = paste0("cov_", meta$name[i]),
-        fun = cor, 
-        colname = paste0("cor_", meta$name[i])
-      )  
-      
-    }
+    message("INFO: --> Working on sample: ", meta$name[i], ", ", i, " of ", nrow(meta), " <--")
+    
+    #add coverage and correlation of coverage
+    gi <- addCor(
+      gi,
+      meta$filePath[[i]],
+      meta$name[[i]],
+    )
   }  
   # Annotae with correlation across TFs -------------------------------------
   
   # get vector with coverage in whole anchor regions
-  covCols <- paste0("cov_", meta$name)
+  covCols <- meta$name
   covDF <- as_tibble(as.data.frame(mcols(regions(gi))[,covCols])) %>% 
     dplyr::mutate_all(.funs = function(l) map_dbl(l, sum))
   
   mcols(regions(gi))[, "cov_sum"] <- NumericList(as_tibble(t(covDF)))
   
-  gi <- chromloop::applyToCloseGI(
+  gi <- addCovCor(
     gi, 
-    datcol = "cov_sum",
-    fun = cor, 
+    datacol = "cov_sum",
     colname = "across_TFs"
   )
   
   # save file for faster reload
-  # save(gi, file = paste0(outPrefix, ".gi.Rdata"))
   write_rds(gi, paste0(outPrefix, ".gi.rds"))
   
 } else {
-  # load(paste0(outPrefix, ".gi.Rdata"))  
   gi <- read_rds(paste0(outPrefix, ".gi.rds"))
 }
 
@@ -207,14 +142,9 @@ if (!GI_LOCAL ) {
 #-------------------------------------------------------------------------------
 # Analyse loopps --------------------------------------------------------
 #-------------------------------------------------------------------------------
-
 df <- as_tibble(as.data.frame(mcols(gi))) %>%
   mutate(
-    id = 1:nrow(.),
-    loop = factor(
-      Loop_Tang2015_HeLa == "Loop" | Loop_Rao_HeLa == "Loop",
-      c(FALSE, TRUE),
-      c("No loop", "Loop"))
+    id = 1:nrow(.)
   ) %>% 
   select(id, loop, everything()) 
 
@@ -232,25 +162,26 @@ designDF <- tibble(
   color = COL_SELECTED_TF_2
   )
 
-TFspecific_ModelDF <- read_tsv(paste0(modelPrefix, ".TFspecific_ModelDF.tsv"))
-allTfModelDF <- read_tsv(paste0(modelPrefix, ".allTfModelDF.tsv"))
-bestNModelDF <- read_tsv(paste0(modelPrefix, ".bestNModelDF.tsv"))
-
 write_rds(designDF, paste0(outPrefix, "designDF.rds"))
 # designDF <- read_rds(paste0(outPrefix, "designDF.rds"))
+
+TFspecific_ModelDF <- read_tsv(paste0(screenPrefix, ".TFspecific_ModelDF.tsv"))
+allTfModelDF <- read_tsv(paste0(screenPrefix, ".allTfModelDF.tsv"))
+bestNModelDF <- read_tsv(paste0(screenPrefix, ".bestNModelDF.tsv"))
 
 # pie(rep(1, nrow(designDF)), col = designDF$color, labels = designDF$name)
 
 predDF <- designDF %>% 
+  # add TF specific model as colum list
   mutate(
     betas_specificTF = map(name, ~ pull(filter(TFspecific_ModelDF, TF == .x), estimate_mean)),
-    # betas_allTF = list(allTfModelDF$estimate_mean),
-    # betas_bestN = list(bestNModelDF$estimate_mean)
   ) %>% 
+  # add predictions using specific TF and other models as columns
   mutate(
-    pred_specificTF = map2(design, betas_specificTF, ~ pred_logit(df, .x, .y)),
-    pred_allTF = map(design, ~ pred_logit(df, .x, allTfModelDF$estimate_mean)),
-    pred_bestN = map(design, ~ pred_logit(df, .x, bestNModelDF$estimate_mean))
+    pred_specificTF = map2(design, betas_specificTF, 
+                           ~ chromloop:::predLogit(df, formula = .x, betas = .y)),
+    pred_allTF = map(design, ~ chromloop:::predLogit(df, .x, allTfModelDF$estimate_mean)),
+    pred_bestN = map(design, ~ chromloop:::predLogit(df, .x, bestNModelDF$estimate_mean))
   )
   
 write_rds(predDF, path = paste0(outPrefix, "predDF.rds"))
@@ -278,7 +209,7 @@ curves <- evalmod(
 # prc_base = precrec:::.get_pn_info(curves)$prc_base
 prc_base = mean(df$loop == "Loop")
 write_rds(prc_base, paste0(outPrefix, "prc_base.rds"))
-
+# prc_base <- read_rds(paste0(outPrefix, "prc_base.rds"))
 
 # get data.frame with auc values
 aucDF <-  as_tibble(auc(curves)) %>% 
@@ -288,6 +219,7 @@ aucDF <-  as_tibble(auc(curves)) %>%
 
 
 write_feather(aucDF, paste0(outPrefix, ".aucDF.feather"))
+# aucDF <- read_feather(paste0(outPrefix, ".aucDF.feather"))
 
 #-------------------------------------------------------------------------------
 # barplot of AUCs of ROC and PRC
@@ -315,7 +247,6 @@ p <- ggplot(aucDFspecific, aes(x = name, y = aucs, fill = name)) +
         text = element_text(size = 15)) +
   scale_fill_manual(values = COL_SELECTED_TF_2) +
   labs(x = "", y = "Prediction performance\n(AUC PRC)")
-p
 ggsave(p, file = paste0(outPrefix, ".AUC_PRC_specificTF.barplot.pdf"), w = 3.5, h = 7)
 
 #-------------------------------------------------------------------------------
@@ -326,11 +257,18 @@ curveDF <- as_tibble(as.data.frame(curves)) %>%
   mutate(name = factor(name, SELECTED_TF)) 
 
 write_feather(curveDF, paste0(outPrefix, ".curveDF.feather"))
+# curveDF <- read_feather(paste0(outPrefix, ".curveDF.feather"))
 
+# subsample curve data
+curveDFsub <- curveDF %>%
+  group_by(pred_type, name, type) %>% 
+  sample_n(1000) %>% 
+  ungroup()
+  
 aucDFroc <- aucDF %>% 
   filter(curvetypes == "ROC", pred_type == "specificTF")
 
-rocDF <- curveDF %>% 
+rocDF <- curveDFsub %>% 
   filter(type == "ROC", pred_type == "specificTF")
 
 g <- ggplot(rocDF, aes(x = x, y = y, color = name)) +
@@ -348,9 +286,9 @@ g <- ggplot(rocDF, aes(x = x, y = y, color = name)) +
                      guide = guide_legend(
                        override.aes = list(size = 2))
   ) +
-  theme(text = element_text(size = 15), legend.position = c(.7,.4),
+  theme(text = element_text(size = 15), legend.position = c(.7,.3),
         legend.background = element_rect(fill = alpha('white', 0.1)))
-ggsave(g, file= paste0(outPrefix, ".ROC.pdf"), w = 5, h = 5)
+ggsave(g, file = paste0(outPrefix, ".ROC.pdf"), w = 5, h = 5)
 
 #-------------------------------------------------------------------------------
 # get PRC plots
@@ -361,7 +299,7 @@ aucDFprc <- aucDF %>%
 # prc_base = precrec:::.get_pn_info(curves)$prc_base
 # write_rds(prc_base, paste0(outPrefix, "prc_base.rds"))
 
-prcDF <- curveDF %>% 
+prcDF <- curveDFsub %>% 
   filter(type == "PRC", pred_type == "specificTF")
 
 g <- ggplot(prcDF, aes(x = x, y = y, color = name)) +
@@ -369,24 +307,32 @@ g <- ggplot(prcDF, aes(x = x, y = y, color = name)) +
   geom_abline(intercept = prc_base, slope = 0, lty = "dotted") +
   theme_bw() + theme(aspect.ratio = 1) +
   labs(x = "Recall", y = "Precision") +
-  scale_color_manual(values = designDF$color) + 
+  scale_color_manual("",
+                     values = COL_SELECTED_TF_2,
+                     labels = paste0(
+                       aucDFroc$name, 
+                       ": AUC=", 
+                       signif(aucDFroc$aucs, 3)
+                     ),
+                     guide = guide_legend(
+                       override.aes = list(size = 2))
+  ) +
   theme(legend.position = "none")
 
 ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
 
 
-  #-----------------------------------------------------------------------------
-  # Binary prediction
-  #-----------------------------------------------------------------------------
+#-----------------------------------------------------------------------------
+# Binary prediction
+#-----------------------------------------------------------------------------
+stop("Stop here. Rest needs to be implemented")
 
-evalDF <- cvDF %>% 
-  select(name, id, pred_allTF, label) %>%
-  # filter(name %in% SELECTED_TF) %>% 
-  filter(id == 1)
-
+specificTFeval <- evalDF %>% 
+  filter(pred_type == "pred_specificTF") %>% 
+  mutate(label = list(df$loop))
 
 # get prediction object with measurements
-predObj <- ROCR::prediction(evalDF$pred_allTF, evalDF$label, levels(evalDF$label[[1]]))
+predObj <- ROCR::prediction(specificTFeval$pred, specificTFeval$label, levels(evalDF$label[[1]]))
 perfObj <- ROCR::performance(predObj, measure = "f")
 
 # get cutoff and f1-score for each model as lists
@@ -402,20 +348,16 @@ f1_List <- slot(perfObj, "y.values")
 f1DF <- tibble(
   cutoff = unlist(cutoff_List),
   f1_score = unlist(f1_List),
-  name = rep(evalDF$name, times = map_int(slot(perfObj, "x.values"), length))
+  name = rep(unique(evalDF$name), map_int(cutoff_List, length))
 )
 
 p <- ggplot(f1DF, aes(x = cutoff, y = f1_score, color = name)) +
   geom_line() +
-  theme_bw() + theme(legend.position = "none") 
-ggsave(p, file = paste0(outPrefix, ".allTF.pred_allTF.f1-score_vs_cutoff.pdf"), w = 5, h = 5)
-
-# plot curve only for selected TFs
-p <- ggplot(filter(f1DF, name %in% SELECTED_TF), aes(x = cutoff, y = f1_score, color = name)) +
-  geom_line() +
-  theme_bw() + theme(legend.position = "bottom") + 
+  theme_bw() + theme(legend.position = "none") +
   scale_color_manual(values = COL_SELECTED_TF)
-ggsave(p, file = paste0(outPrefix, ".selectedTF.pred_allTF.f1-score_vs_cutoff.pdf"), w = 5, h = 5)
+ggsave(p, file = paste0(outPrefix, ".pred_specificTF.f1-score_vs_cutoff.pdf"), w = 5, h = 5)
+
+stop("Stop here. Rest needs to be implemented")
 
 #-------------------------------------------------------------------------------
 # get cutoff with maximal f1-score
