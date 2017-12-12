@@ -12,8 +12,8 @@ wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdSig	ChIP-seq	CTCF	signal_UCSC	data/ENCOD
 ENCFF000SLA	DNase-seq	DNase-seq	base overlap signal	data/ENCODE/open_chromatin/ENCFF000SLA.bigWig
 ENCFF000SLH	DNase-seq	DNase-seq	signal	data/ENCODE/open_chromatin/ENCFF000SLH.bigWig
 wgEncodeEH000625	ChIP-seq	input	input	data/ENCODE/input/wgEncodeSydhTfbsGm12878InputStdSig.bigWig
-wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1	ChIP-seq	Rad21	qfraq	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
-wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1	ChIP-seq	Rad21	shifted_reads	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
+wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1	ChIP-seq	RAD21	qfraq	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
+wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1	ChIP-seq	RAD21	shifted_reads	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
 wgEncodeSydhTfbsGm12878Stat1StdAlnRep1	ChIP-seq	STAT1	qfraq	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Stat1StdAlnRep1.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
 wgEncodeSydhTfbsGm12878Stat1StdAlnRep1	ChIP-seq	STAT1	shifted_reads	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Stat1StdAlnRep1.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
 wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1	ChIP-seq	CTCF	qfraq	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
