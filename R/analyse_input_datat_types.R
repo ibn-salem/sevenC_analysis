@@ -21,7 +21,7 @@ source("R/chromloop.functions.R")
 
 # use previously saved gi object?
 GI_LOCAL <- FALSE
-N_CORES = min(10, parallel::detectCores() - 1)
+N_CORES = min(16, parallel::detectCores() - 1)
 
 # MIN_MOTIF_SIG <- 5
 MOTIF_PVAL <- 2.5 * 1e-06
@@ -45,12 +45,12 @@ DATA_TYPES_META_FILE = "data/DATA_TYPES_metadata.tsv"
 
 # setup cluster ----------------------------------------------------------------
 
-# partion data for parallel processing
-cluster <- create_cluster(N_CORES) %>%
-  cluster_library(packages = c("chromloop", "tidyverse"))
-
-# evaluate help function code on each cluster
-cluster_eval(cluster, source("R/chromloop.functions.R"))
+# # partion data for parallel processing
+# cluster <- create_cluster(N_CORES) %>%
+#   cluster_library(packages = c("chromloop", "tidyverse"))
+# 
+# # evaluate help function code on each cluster
+# cluster_eval(cluster, source("R/chromloop.functions.R"))
 
 
 # Parse and filter meta data  --------------------------------------------------
@@ -76,7 +76,7 @@ write_tsv(meta, paste(outPrefix, ".meta_filtered.tsv"))
 
 COL_TF <- brewer.pal(8, "Set2")[1:length(unique(meta$TF))]
 names(COL_TF) <- unique(meta$TF)
-barplot(1:length(COL_TF), col = COL_TF, names.arg = names(COL_TF))
+#barplot(1:length(COL_TF), col = COL_TF, names.arg = names(COL_TF))
 
 # Select motifs and parse input data -----------------------------------
 
@@ -135,23 +135,33 @@ write_feather(tidyCV, paste0(outPrefix, ".tidyCV.feather"))
 # tidyCV <- read_feather(paste0(outPrefix, ".tidyCV.feather"))
 
 
+designList <- list(
+  "Dist" =  loop ~ dist,
+  "Orientation" = loop ~ strandOrientation,
+  "Motif" = loop ~ score_min,
+  "Dist+Orientation+Motif" = loop ~ dist + strandOrientation + score_min
+)
+
 # get design formula for each TF and model
 designDF <- tibble(
-  meta_name = c(meta$name, meta$name),
+  meta_name = c(rep(NA, length(designList)), meta$name, meta$name),
   name = c(
+    names(designList),
     paste0(meta$name, "_only"),
     meta$name
   ),
   design = c(
+    designList,
     map(meta$name, ~as.formula(paste0("loop ~ cor_", .x)) ),
     map(meta$name, ~as.formula(paste0("loop ~ dist + strandOrientation + score_min + cor_", .x)) )
   ),
   color = c(
+    c("greenyellow", "gold2", "khaki", "brown4"),
     COL_TF[meta$TF],
     COL_TF[meta$TF]
   )
 ) %>% 
-  mutate(name = factor(name, c(paste0(meta$name, "_only"), meta$name))) %>% 
+  mutate(name = factor(name, c(paste0(meta$name, "_only"), meta$name, names(designList)))) %>% 
   arrange(name)
 
 write_rds(designDF, paste0(outPrefix, "designDF.rds"))
@@ -166,15 +176,15 @@ cvDF <- tidyCV %>%
   mutate(id = parse_integer(str_replace(Fold, "^Fold", "")))
 
 
-# copy object to each cluster node
-# cluster <- cluster %>% 
-#   cluster_copy(tidyCV) %>% 
+# # copy object to each cluster node
+# cluster <- cluster %>%
+#   cluster_copy(tidyCV) %>%
 #   cluster_copy(df)
 
 # partition data set to clusters
 cvDF <- cvDF %>% 
   # partition(name, Fold, cluster = cluster) %>%
-  group_by(name, Fold) %>% 
+  group_by(name, Fold) %>%
   # fit model on training part
   # fit model and save estimates in tidy format
   mutate(
@@ -191,7 +201,7 @@ cvDF <- cvDF %>%
     label = map(map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), "loop")
   ) %>% 
   # collect results from cluster
-  # collect() %>% 
+  # collect() %>%
   # ungroup
   ungroup()
 
