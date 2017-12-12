@@ -15,6 +15,9 @@ More details on the method itself can be found here on the chromloop
 1. [analyse_selected_models.R](R/analyse_selected_models.R)
 1. [loop_freaters_EDA.R](R/loop_freaters_EDA.R)
 1. [analyse_HeLa.R](R/analyse_HeLa.R)
+1. [analyse_input_data_types.R](R/analyse_input_data_types.R)
+    - [analyse_input_data_types_performance.R](R/analyse_input_data_performance_types.R)
+    - [analyse_input_data_types_features.R](R/analyse_input_data_features.R)
 
 
 ## Download external data
@@ -64,4 +67,8 @@ Here, we use a prediction model that was trained in GM12878 cells and evaluate i
 ```
 Rscript R/analyse_HeLa.R
 ```
+
+## Input types for loop prediction
+We analyse different input data types for ChIP-seq and other genomic assays for there performance in loop prediction.
+
 
