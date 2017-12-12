@@ -18,7 +18,8 @@ More details on the method itself can be found here on the chromloop
 1. [analyse_input_data_types.R](R/analyse_input_data_types.R)
     - [analyse_input_data_types_performance.R](R/analyse_input_data_performance_types.R)
     - [analyse_input_data_types_features.R](R/analyse_input_data_features.R)
-
+1. [analyse_NeuroD1.R](R/analyse_NeuroD1.R)
+1. [analyse_TF_perturbation.R](R/analyse_TF_perturbation.R)
 
 ## Download external data
 
