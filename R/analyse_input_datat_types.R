@@ -72,7 +72,7 @@ meta <- meta %>%
   select(name, file_exists, everything()) %>%
   filter(file_exists)
 
-write_tsv(meta, paste(outPrefix, ".meta_filtered.tsv"))
+write_tsv(meta, paste0(outPrefix, ".meta_filtered.tsv"))
 
 COL_TF <- brewer.pal(8, "Set2")[1:length(unique(meta$TF))]
 names(COL_TF) <- unique(meta$TF)
