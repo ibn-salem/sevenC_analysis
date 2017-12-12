@@ -25,12 +25,27 @@ source("R/gr_associations.R")
 
 # 0) Set parameter --------------------------------------------------------
 
-# MIN_MOTIF_SIG <- 6
-# WINDOW_SIZE <- 1000
-# BIN_SIZE <- 1
 
-# PreviousOutPrefix <- "results/v03_screen_TF_qfraq.motifSig6_w1000_b1"
-outPrefix <- "results/v04.TF_perturbation"
+# MIN_MOTIF_SIG <- 5
+MOTIF_PVAL <- 2.5 * 1e-06
+WINDOW_SIZE <- 1000
+BIN_SIZE <- 1
+N_TOP_MODELS = 10
+
+# define data candidate path
+dataCandidatesPreifx <- file.path("results", 
+                                  paste0("CTCF_JASPAR.v01.pval_", MOTIF_PVAL))
+
+# topN_models_file = "results/v05_screen_TF_lfc.motifPval2.5e-06_w1000_b1.bestNModelDF.tsv"
+models_prefix = "results/v05_screen_TF_lfc.motifPval2.5e-06_w1000_b1"
+
+# # PreviousOutPrefix <- "results/v03_screen_TF_qfraq.motifSig6_w1000_b1"
+# outPrefix <- "results/v05.TF_perturbation"
+outPrefix <- file.path("results", paste0("v05.TF_perturbation.", 
+                                         paste0("motifPval", MOTIF_PVAL), 
+                                         "_w", WINDOW_SIZE, 
+                                         "_b", BIN_SIZE))
+
 
 # metadata file
 # metaFile <- "data/GR_CHIP-SEQ_FILES.tsv"
@@ -46,6 +61,9 @@ bigWig_file = paste0("data/Wu2013/", c("ENCFF000XCK.bigWig", "ENCFF000RYM.bigWig
 
 GS_genes_file = "data/Wu2013/12859_2012_5924_MOESM1_ESM.xls"
 
+# read CTCF moitf pairs as candidates ------------------------------------------
+gi <- read_rds(paste0(dataCandidatesPreifx, ".gi.rds"))
+
 
 # ----------------------- Parse peaks ------------------------------------------
 extraCols_narrowPeak <- c(signalValue = "numeric", pValue = "numeric",
@@ -55,13 +73,15 @@ peaks <- map(peak_files, rtracklayer::import, format = "BED",
                         extraCols = extraCols_narrowPeak, seqinfo = seqinfo(gi))
 
 # ----------------------- Parse gold standard genes from perturbation data -----
-
 sheets_lables = c("GS_MYC_HelaS3", "GS_MYC_MCF7")
 
 GS_genes <- map(sheets_lables, ~ read_excel(GS_genes_file, sheet = .x)) %>% 
                map(pull, Original)
 # ----------- Predict Loops for input ChiP-seq data ----------------------------
-gi <- prepareCandidates(motif.hg19.CTCF, scoreColname = "sig")
+# parse model parameter
+best10model <- read_tsv(paste0(models_prefix, ".bestNModelDF.tsv"))
+cutoffDF <- read_tsv(paste0(models_prefix, ".topNf1ModelDF.tsv"))
+
 
 for (i in seq_along(sample_names)) {
   
@@ -71,14 +91,14 @@ for (i in seq_along(sample_names)) {
     addCor(bwFile = bigWig_file[[i]], name = nameStr)
   
   # define model based on specific TF ChIP-seq data set
-  model <- as.formula(paste0("~ dist + strandOrientation + score_min + ", nameStr))
+  model <- as.formula(paste0("~ dist + strandOrientation + score_min + ", "cor_", nameStr ))
   
   # add preiction score
   gi <- gi %>% 
-    predLoops(formula = model, cutoff = NULL, colname	= paste0("pred_", nameStr))
+    predLoops(formula = model, betas = best10model$estimate_mean, colname	= paste0("pred_", nameStr))
   
   # add binary prediction
-  mcols(gi)[, paste0("predBinary_", nameStr)] <-  mcols(gi)[, paste0("pred_", nameStr)] >= chromloop::cutoffBest10
+  mcols(gi)[, paste0("predBinary_", nameStr)] <-  mcols(gi)[, paste0("pred_", nameStr)] >= cutoffDF$mean_max_cutoff
 }
 
 write_rds(gi, paste0(outPrefix, "gi_pred.rds"))
@@ -86,7 +106,6 @@ write_rds(gi, paste0(outPrefix, "gi_pred.rds"))
 #=== Associate Loops to differential expressed genes ===========================
 
 #--- get genes ----------------------------------------------------------------
-
 txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
 
 genesGR <- genes(txdb)
@@ -103,6 +122,7 @@ for (i in seq_along(GS_genes)) {
   mcols(genesGR)[ ,paste0("DE_", sample_names[[i]])] <- deFact
 }
 
+# get only TSS of genes
 tssGR <- resize(genesGR, width = 1, fix = "start")
 
 # --------------- Some functions -----------------------------------------------
@@ -117,60 +137,47 @@ add_overalp <- function(tssGR, peaksGR, colname = "peak_ovwerlap", ...){
 }
 
 
-#' Get contingency table as tidy tibble from.
-#'
-#' @param true Logical vector of true labels (goldstandard)
-#' @param pred Logical vector of predicted lables
-#' @return A tibble with the number of true postivies (TP), false postivives
-#'   (FP), false negatives (FN), and true negatives (TN) in columns.
-getContab <- function(true, pred){
-  
-  tab <- count(
-    tibble(
-      true = true,
-      pred = pred
-    ), 
-    true, pred
-  ) %>% 
-    arrange(true, pred)
-  
-  tibble(
-    TN = tab$n[[1]],
-    FP = tab$n[[2]],
-    FN = tab$n[[3]],
-    TP = tab$n[[4]]
-  )
-}
-
-# helper function
-isLinked <- function(linkDF, len){1:len %in% linkDF$gr1}
-
-
 # --------------- Get bound gens -----------------------------------------------
 
 for (i in seq_along(sample_names)) {
   
   nameStr <- sample_names[[i]]
   
+  # get subset of pairs that do interact
   binaryPred <- mcols(gi)[, paste0("predBinary_", nameStr)]
-  
   subGI <- gi[!is.na(binaryPred) & binaryPred]
-
+  
+  peaksGR <- peaks[[i]]
+  
+  maxgap_sizes <- c(0, 10^3, 5*10^3, 10^4, 5*10^4, 10^5)
+  
   regPredDF <- tibble(
-    maxgap = c(0, 10^3, 10^4, 10^5, 10^6),
+    maxgap = maxgap_sizes,
   ) %>% 
     mutate(
-      gr = map(maxgap, ~ add_overalp(tssGR, peaks[[i]], colname = paste0("peak_ovlerap_", .), maxgap = .)),
-      ovlerap = map2(gr, maxgap, ~ mcols(.x)[, paste0("peak_ovlerap_", .y)]),
-      loop_maxgap = map(map(maxgap, ~ linkRegions(tssGR, peaks[[i]], subGI, maxgap = .)), isLinked, length(tssGR)),
-      loop_inner_maxgap = map(map(maxgap, ~ linkRegions(tssGR, peaks[[i]], subGI, inner_maxgap = .)), isLinked, length(tssGR)),
-      loop_inner_outer = map(map(maxgap, ~ linkRegions(tssGR, peaks[[i]], subGI, inner_maxgap = ., outer_maxgap = .)), isLinked, length(tssGR)),
-      loop_inLoop = map(map(maxgap, ~ linkRegionsInLoops(tssGR, peaks[[i]], subGI, maxgap = .)), isLinked, length(tssGR)),
+      overlap = map(maxgap, ~ overlapsAny(tssGR, peaksGR, maxgap = .)),
+      loop_maxgap = map(
+        map(maxgap, ~ linkRegions(tssGR, peaksGR, subGI, maxgap = .)),
+        isLinked, length(tssGR)
+      ),
+      loop_inner_maxgap = map(
+        map(maxgap, ~ linkRegions(tssGR, peaksGR, subGI, inner_maxgap = .)),
+        isLinked, length(tssGR)
+      ),
+      loop_inner_outer = map(
+        map(maxgap, ~ linkRegions(tssGR, peaksGR, subGI, inner_maxgap = ., outer_maxgap = .)),
+        isLinked, length(tssGR)
+      ),
+      loop_inLoop = map(
+        map(maxgap, ~ linkRegionsInLoops(tssGR, peaksGR, subGI, maxgap = .)), 
+        isLinked, length(tssGR)
+      )
     ) %>% 
-    dplyr::select(maxgap, ovlerap, starts_with("loop_")) %>% 
-    gather(key = method, value = pred, ovlerap, starts_with("loop_"))
+    dplyr::select(maxgap, overlap, starts_with("loop_")) %>% 
+    gather(key = method, value = pred, overlap, starts_with("loop_"))
   
-  write_rds(regPredDF, paste0(outPrefix, ".", nameStr, ".regPredDF.rds"))
+  write_rds(regPredDF, paste0(outPrefix, ".regPredDF.rds"))
+  # regPredDF <- read_rds( paste0(outPrefix, ".regPredDF.rds"))
   
   # calculate contingency tables and performance evaluations
   deGenes <- mcols(tssGR)[, paste0("DE_", nameStr)] == "DE"
@@ -185,52 +192,43 @@ for (i in seq_along(sample_names)) {
   
   write_tsv(regGeneDF, paste0(outPrefix, ".", nameStr, ".regGeneDF.tsv"))
 
-  
-  #-------------------------------------------------------------------------------
-  # Plot performance
-  #-------------------------------------------------------------------------------
-  
+  # Plot performance -----------------------------------------------------------
+
   tidyRegDF <- regGeneDF %>% 
     dplyr::select(-expected, -`O/E`) %>% 
     mutate(maxgap = as.factor(maxgap)) %>% 
     gather(key = "metric", value = "performance", TPR:ACC) %>% 
-    filter(metric %in% c("F1", "precision", "recall", "sensitivity", "specificity", "MCC"))
+    filter(metric %in% c("F1", "precision", "sensitivity", "specificity", "MCC")) %>% 
+    write_tsv(paste0(outPrefix, ".", nameStr, ".tidyRegDF.tsv"))
   
   p <- ggplot(tidyRegDF, aes(x = maxgap, y = performance, fill = method, label = round(performance, 2))) +
     geom_bar(stat = "identity", position = "dodge") +
-    geom_text(hjust = -.1, position = position_dodge(.9), angle = 90) +
-    facet_wrap(~ metric) + #, scales = "free_y"
-    ylim(0, 1.2) +
+    geom_text(hjust = 1.1, position = position_dodge(.9), angle = 90) +
+    facet_grid(metric ~ ., scales = "free_y") +
+    # ylim(0, 1.2) +
     theme_bw() +
     theme(
-      text = element_text(size=10), 
+      text = element_text(size = 10), 
       legend.position = "bottom",
       axis.text.x = element_text(angle = 60, hjust = 1)) +
     scale_fill_manual(values = brewer.pal(5, "Set1"))
   
-  ggsave(paste0(outPrefix, ".", nameStr, ".regGeneDF.binary_classification.barplot.pdf"), w = 12, h = 6)
+  ggsave(paste0(outPrefix, ".", nameStr, ".regGeneDF.binary_classification.barplot.pdf"), w = 6, h = 6)
   
+  # plot ROC like kurve
+  rocDF <- tidyRegDF %>% 
+    filter(metric %in% c("sensitivity", "specificity")) %>% 
+    spread(key = metric, value = performance)
   
+  p <- ggplot(rocDF, aes(x = 1 - specificity, y = sensitivity, color = method)) +
+    geom_abline(intercept = 0, slope = 1, color = "black") + 
+    geom_point() +
+    geom_line() + 
+    xlim(0, 1) + ylim(0, 1) +
+    theme_bw() + theme(legend.position = "bottom") +
+    scale_color_manual(values = brewer.pal(5, "Set1"), 
+                       guide = guide_legend(ncol = 2, title.position = "top"))
+  ggsave(paste0(outPrefix, ".", nameStr, ".regGeneDF.ROC.pdf"), w = 3, h = 4)
+    
 }
-  
-
-# #-------------------------------------------------------------------------------
-# # compare predicted regulated genes to log10(p-value) of expression
-# #-------------------------------------------------------------------------------
-# DEvsRegDF <- regPredDF %>% 
-#   mutate(padj = list(genesGR$padj)) %>% 
-#   unnest(pred, padj)
-# 
-# p <- ggplot(DEvsRegDF, aes(x = pred, y = padj, color = method)) +
-#   geom_boxplot() +
-#   facet_wrap(~ maxgap) +
-#   theme_bw() +
-#   theme(
-#     text = element_text(size=10), 
-#     legend.position = "bottom",
-#     axis.text.x = element_text(angle = 60, hjust = 1)) +
-#   scale_color_manual(values = brewer.pal(5, "Set1"))
-# 
-# ggsave(paste0(outPrefix, ".DEvsRegDF.padj_vs_binding.boxplot.pdf"), w = 6, h = 6)
-
 
