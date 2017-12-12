@@ -211,38 +211,6 @@ write_rds(tssGR, paste0(outPrefix, ".tssGR"))
 #-------------------------------------------------------------------------------
 
 
-#' Get contingency table as tidy tibble from.
-#'
-#' @param true Logical vector of true labels (goldstandard)
-#' @param pred Logical vector of predicted lables
-#' @return A tibble with the number of true postivies (TP), false postivives
-#'   (FP), false negatives (FN), and true negatives (TN) in columns.
-getContab <- function(true, pred){
-  
-  tab <- count(
-    tibble(
-      true = true,
-      pred = pred
-    ), 
-    true, pred
-  ) %>% 
-    arrange(true, pred)
-  
-  tibble(
-    TN = tab$n[[1]],
-    FP = tab$n[[2]],
-    FN = tab$n[[3]],
-    TP = tab$n[[4]]
-  )
-}
-
-# helper function
-isLinked <- function(linkDF, len){
-  # 1:len %in% linkDF$gr1
-  is.element(seq(len), linkDF$gr1)
-}
-
-
 maxgap_sizes <- c(0, 10^3, 5*10^3, 10^4, 5*10^4, 10^5)
 
 regPredDF <- tibble(
