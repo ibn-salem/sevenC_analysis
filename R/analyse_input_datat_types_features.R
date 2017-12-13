@@ -23,11 +23,12 @@ outPrefix <- file.path("results", paste0("v05_input_types.",
                                          "_w", WINDOW_SIZE, 
                                          "_b", BIN_SIZE))
 
-DATA_TYPES_META_FILE = "data/DATA_TYPES_metadata.tsv"
+COL_LOOP = brewer.pal(8, "Dark2")[c(8,5)] #[c(2,1,5,6)]
+names(COL_LOOP) <- c("No loop", "Loop")
 
 
 # Parse and prcessed data and meta data  ---------------------------------------
-meta <- read_tsv(paste(outPrefix, ".meta_filtered.tsv"))
+meta <- read_tsv(paste0(outPrefix, ".meta_filtered.tsv"))
 
 df <- read_feather(paste0(outPrefix, ".df.feather"))
 
@@ -35,11 +36,8 @@ df <- read_feather(paste0(outPrefix, ".df.feather"))
 # make a tidy DF
 tidyDF <- df %>% 
   gather(starts_with("cor_"), key = name, value = cor) 
-
-tidyDF <- tidyDF %>% 
   # mutate(type = str_replace(type, "^cor_", ""))
   mutate(name = str_sub(name, 5))
-
 
 # Compare Correlation with Boxplot ---------------------------------------------
 
@@ -55,11 +53,11 @@ p <- ggplot(tidySubDF, aes(x = loop, y = cor)) +
     guide_legend(title = "")) +
   theme_bw() + 
   theme(
-    text = element_text(size=20), 
+    text = element_text(size = 20), 
     # axis.text.x=element_blank(), 
     legend.position = "none",
     axis.text.x = element_text(angle = 60, hjust = 1)) + 
-  labs(y = "Correlation of ChIP-seq signal", x="")
+  labs(y = "Correlation of ChIP-seq signal", x = "")
 # geom_text(data=pvalDF, aes(label=paste0("p=", signif(p,3)), x=1.5, y=1.1), size=5)
 # p
 ggsave(p, file = paste0(outPrefix, ".cor.by_name_and_loop.boxplot.pdf"), w = 14, h = 7)
@@ -71,7 +69,7 @@ p <- ggplot(tidyDF, aes(x = loop, y = cor)) +
   geom_violin(aes(fill = interaction(loop, name))) + 
   geom_boxplot(fill = "white", width = .2) +
   facet_grid(. ~ name) + 
-  scale_fill_manual(values = COL_SELECTED_TF) +
+  scale_fill_manual(values = colorRampPalette(brewer.pal(12, "Set3"))(nrow(meta))) +
   theme_bw() + 
   theme(
     text = element_text(size = 20), 

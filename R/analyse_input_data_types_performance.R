@@ -81,23 +81,7 @@ aucDFmed <- aucDF %>%
     aucs_sd = sd(aucs, na.rm = TRUE)
   ) %>% 
   ungroup() %>% 
-  # add metadata annotation
-  mutate(modnames = str_replace(modnames, "Rad21", "RAD21")) %>% 
   left_join(meta, by = c("modnames" = "name"))
-
-# # fix Rad21 into RAD21
-# aucDFmed <- aucDFmed
-# 
-# cvDF <- cvDF %>% 
-#   mutate(
-#     name = str_replace(name, "Rad21", "RAD21"),
-#     meta_name = str_replace(meta_name,  "Rad21", "RAD21")
-#   )
-# designDF <- designDF %>% 
-#   mutate(
-#     name = str_replace(name, "Rad21", "RAD21"),
-#     meta_name = str_replace(meta_name,  "Rad21", "RAD21")
-#   )
 
 write_feather(aucDFmed, paste0(outPrefix, ".aucDFmed.feather"))
 
