@@ -443,10 +443,43 @@ ggsave(p, file = paste0(outPrefix, ".2_random_pairs.cor.pdf"), w = 7, h = 3.5)
 #======================== Compare Correlation with Boxplot ==================
 
 p <- ggplot(tidyDF, aes(x = loop, y = cor)) +
-  geom_violin(aes(fill = interaction(loop, name))) + 
+  geom_violin(aes(fill = interaction(loop, name))) +
   geom_boxplot(fill = "white", width = .2) +
+  facet_grid(. ~ name) +
+  scale_fill_manual(values = COL_SELECTED_TF) +
+  theme_bw() +
+  theme(
+    text = element_text(size = 20),
+    # axis.text.x=element_blank(),
+    legend.position = "none",
+    axis.text.x = element_text(angle = 60, hjust = 1)) +
+  labs(y = "ChIP-seq\n Correlation", x = "")
+ggsave(p, file = paste0(outPrefix, ".EDA.cor.by_TF_and_loop.violin.pdf"), w = 7, h = 3.5)
+
+
+p <- ggplot(tidyDF, aes(x = loop, y = cor)) +
+  geom_violin(aes(fill = interaction(loop, name))) +
+  geom_boxplot(fill = "white", width = .2, outlier.shape = NA) +
+  facet_grid(. ~ name) +
+  scale_fill_manual(values = COL_SELECTED_TF) +
+  theme_bw() +
+  theme(
+    text = element_text(size = 20),
+    # axis.text.x=element_blank(),
+    legend.position = "none",
+    axis.text.x = element_text(angle = 60, hjust = 1)) +
+  labs(y = "ChIP-seq\n Correlation", x = "")
+ggsave(p, file = paste0(outPrefix, ".EDA.cor.by_TF_and_loop.violin_no-outlier.pdf"), w = 7, h = 3.5)
+
+
+p <- ggplot(tidyDF, aes(x = loop, y = cor, fill = interaction(loop, name), color = interaction(loop, name))) +
+  # geom_violin(aes(fill = interaction(loop, name))) + 
+  # geom_boxplot(fill = "white", width = .2) +
+  geom_violin(color = NA, adjust = 0.25, alpha = 0.5) +
+  geom_boxplot(fill = "white", outlier.shape = NA, width = 0.2) + 
   facet_grid(. ~ name) + 
   scale_fill_manual(values = COL_SELECTED_TF) +
+  scale_color_manual(values = COL_SELECTED_TF) +
   theme_bw() + 
   theme(
     text = element_text(size = 20), 
@@ -456,7 +489,8 @@ p <- ggplot(tidyDF, aes(x = loop, y = cor)) +
   labs(y = "ChIP-seq\n Correlation", x = "")
 # geom_text(data=pvalDF, aes(label=paste0("p=", signif(p,3)), x=1.5, y=1.1), size=5)
 # p
-ggsave(p, file = paste0(outPrefix, ".EDA.cor.by_TF_and_loop.violin.pdf"), w = 7, h = 3.5)
+
+ggsave(p, file = paste0(outPrefix, ".EDA.cor.by_TF_and_loop.violin_color.pdf"), w = 7, h = 3.5)
 
 
 p <- ggplot(tidyDF, aes(x = name, y = cor, col = loop)) +
