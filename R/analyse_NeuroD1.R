@@ -322,7 +322,7 @@ DEvsRegDF <- regPredDF %>%
     log2FoldChange = list(tssGR$log2FoldChange)
     ) %>% 
   unnest(pred, padj, log2FoldChange)
-
+write_rds(DEvsRegDF, paste0(outPrefix, ".DEvsRegDF.rds"))
 
 p <- ggplot(DEvsRegDF, aes(x = pred, y = padj, color = method)) +
   geom_boxplot(outlier.shape = NA) +
