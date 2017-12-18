@@ -108,7 +108,51 @@ writeLongRangeFormat <- function(gi, score_vec, output_file){
   write_tsv(outDF, path = output_file, col_names = FALSE)
 }
 
-
+#' Write interactions long-range track file format for Epi-Genome Browser.
+#' 
+#' 
+#' The WashU EpiGenome Browser can visuallize chromaint interactions along other
+#' genomic features. The format of the track file format is described here:
+#' http://wiki.wubrowse.org/Long-range
+#'
+#' @param gi
+#' @param score_vec Numeric vector of the same length as \cod{gi}. It will be
+#'   used as score in output fiel.
+#' @param output_file Path to output file.
+#' @index compress and index the output file. See \code{\link[rtracklayer]{export.bed}}.
+#' 
+writeLongRangeTrackFormat <- function(gi, score_vec, output_file, index = TRUE){
+  
+  ancGR <- regions(gi)
+  # delete all annoation columns of anchors
+  mcols(ancGR) <- NULL
+  
+  upID <- anchors(gi, type = "first", id = TRUE)
+  downID <- anchors(gi, type = "second", id = TRUE)
+  
+  reg1 <- ancGR[c(upID, downID)]
+  strand(reg1) <- "*"
+  
+  # build column for with information of interacting regions
+  chrStr <- seqnames(ancGR)[c(downID, upID)]
+  startStr <- as.character(start(ancGR)[c(downID, upID)])
+  endStr <- as.character(end(ancGR)[c(downID, upID)])
+  scoreStr <- as.character(rep(score_vec, 2))
+  
+  col4 <- paste0(chrStr, ":", startStr, "-", endStr, ",", scoreStr)
+  names(reg1) <- col4
+  score(reg1) <- 1:length(reg1)
+  
+  # sort 
+  reg1 <- sort(reg1)
+  
+  export.bed(reg1, output_file, index = index)
+  
+}
+# gi <- read_rds("results/v05_HeLa.motifPval2.5e-06_w1000_b1.gi.rds")
+# gi <- gi[1:100]
+# score_vec <- gi$score_min
+# output_file <- "results/test_interaction_format.bed"
 
 #' Get contingency table as tidy tibble from.
 #'
