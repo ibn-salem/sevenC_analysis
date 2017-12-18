@@ -315,6 +315,7 @@ aucDFmed <- aucDF %>%
   ungroup() 
 
 write_feather(aucDFmed, paste0(outPrefix, ".aucDFmed.feather"))
+# aucDFmed <- read_feather(paste0(outPrefix, ".aucDFmed.feather"))
 
 #-------------------------------------------------------------------------------
 # barplot of AUCs of ROC and PRC
@@ -345,9 +346,9 @@ p <- ggplot(filter(aucDFmed, curvetypes == "PRC"),
         legend.position = "none",
         text = element_text(size = 15)) +
   scale_fill_manual(values = designDF$color) +
-  labs(x = "Models", y = "Prediction performance\n(AUC PRC)")
+  labs(x = "Models", y = "Prediction performance\n(auPRC)")
 # p
-ggsave(p, file = paste0(outPrefix, ".AUC_PRC.barplot.pdf"), w = 3.5, h = 7)
+ggsave(p, file = paste0(outPrefix, ".AUC_PRC.barplot.pdf"), w = 3.5, h = 5)
 
 
 #-------------------------------------------------------------------------------
@@ -472,6 +473,9 @@ mcols(gi)$predBinary_Rad21 <- !is.na(mcols(gi)$pred_Rad21) & mcols(gi)$pred_Rad2
 # Write genome browser tracks   -----
 #*******************************************************************************
 
+# write CTCF moitfs as BED file
+export.bed(regions(gi), paste0(outPrefix, ".motifs.bed"), index = TRUE)
+
 # chr22 <- GRanges(seqinfo(gi))["chr22"]
 # chr22GI <- subsetByOverlaps(gi, chr22, ignore.strand = TRUE)
 
@@ -484,6 +488,20 @@ writeLongRangeFormat(
   output_file = paste0(outPrefix, ".gi.loop.chr22.longrange.txt")
   )
 
+writeLongRangeTrackFormat(
+  chr22GI,
+  score_vec = ifelse(mcols(chr22GI)$loop == "Loop", 1, -1), 
+  output_file = paste0(outPrefix, ".gi.loop.chr22.longrange_track.bed"),
+  index = TRUE
+)
+
+# write all pairs to track format
+writeLongRangeTrackFormat(
+  gi,
+  score_vec = ifelse(mcols(gi)$loop == "Loop", 1, -1), 
+  output_file = paste0(outPrefix, ".gi.loop.longrange_track.bed")
+)
+
 # write all chr22 pairs (with labeld predictions)
 writeLongRangeFormat(
   gi = chr22GI, 
@@ -493,26 +511,26 @@ writeLongRangeFormat(
 
 # write only subset of interacting pairs
 loopGI <- gi[gi$loop == "Loop"]
-writeLongRangeFormat(
+writeLongRangeTrackFormat(
   gi = loopGI, 
   score_vec = rep(1, length(loopGI)), 
-  output_file = paste0(outPrefix, ".gi.loop_sub.longrange.txt")
+  output_file = paste0(outPrefix, ".gi.loop_sub.longrange_track.bed")
 )
 
 # write only subset of predicted loops
 rad21GI <- gi[gi$predBinary_Rad21]
-writeLongRangeFormat(
+writeLongRangeTrackFormat(
   gi = rad21GI, 
   score_vec = 100 * rad21GI$pred_Rad21, 
-  output_file = paste0(outPrefix, ".gi.pred_Rad21_sub.longrange.txt")
+  output_file = paste0(outPrefix, ".gi.pred_Rad21_sub.longrange_track.bed")
 )
 
 
-# write all pairs (with labeld true ones)
-writeLongRangeFormat(
-  gi = gi, 
-  score_vec = ifelse(mcols(gi)$loop == "Loop", 1, -1), 
-  output_file = paste0(outPrefix, ".gi.loop.longrange.txt")
+# # write all pairs (with labeld true ones)
+# writeLongRangeFormat(
+#   gi = gi, 
+#   score_vec = ifelse(mcols(gi)$loop == "Loop", 1, -1), 
+#   output_file = paste0(outPrefix, ".gi.loop.longrange.txt")
 )
 
 #===============================================================================
