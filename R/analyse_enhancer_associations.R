@@ -6,7 +6,7 @@
 
 library(chromloop)    # devtools::install_github("ibn-salem/chromloop")
 library(rtracklayer)  # to import() BED files
-library(EnsDb.Hsapiens.v75)
+# library(EnsDb.Hsapiens.v75)
 library(TxDb.Hsapiens.UCSC.hg19.knownGene)  # for human genes
 library(tidyverse)    # for tidy data
 library(stringr)      # for string functions
@@ -21,8 +21,11 @@ source("R/gr_associations.R")
 
 outPrefix <- "results/v05.TF_enhancer_associations"
 
-selected_model_prefix <- "results/v05_selected_models.motifSig6_w1000_b1"
-model_prefix <- "results/v04_screen_TF_lfc.motifSig6_w1000_b1" # bestNModelDF.tsv
+# topN_models_file = "results/v05_screen_TF_lfc.motifPval2.5e-06_w1000_b1.bestNModelDF.tsv"
+models_prefix = "results/v05_screen_TF_lfc.motifPval2.5e-06_w1000_b1"
+
+selected_model_prefix <- "results/v05_selected_models.motifPval2.5e-06_w1000_b1"
+# model_prefix <- "results/v04_screen_TF_lfc.motifSig6_w1000_b1" # bestNModelDF.tsv
 
 # enahncer_association_file <- "data/EnhancerAtlas/GM12878_EP.txt"
 
@@ -35,65 +38,18 @@ metadata_file <- "data/ENCODE/metadata.fcDF.tsv"
 gi <- read_rds(paste0(selected_model_prefix, ".gi.rds"))
 
 # use default model of average across best 10 TFs
-model <- read_tsv(paste0(model_prefix, ".bestNModelDF.tsv"))
+model <- read_tsv(paste0(models_prefix, ".bestNModelDF.tsv"))
+
+BestN_cutof <- read_tsv(paste0(models_prefix, ".topNf1ModelDF.tsv")) %>% 
+  pull(mean_max_cutoff)
 
 # predict loops using default model
 loops <- chromloop::predLoops(
   gi,
   formula = ~ dist + strandOrientation + score_min + cor_RAD21,
   betas = model$estimate_mean,
-  # cutoff = 0.1
+  cutoff = BestN_cutof
   )
-
-# get regions enclosed by loops
-loopRange <- interactionRange(loops)
-
-# extend anchros and find direct interactions
-# extended_size = 5*10^4
-inner_extended_size = 0
-outer_extended_size = 0
-extLoops <- extendAnchors(loops, 
-                          inner = inner_extended_size, 
-                          outer = outer_extended_size)
-
-# --------------- Use all CTCF motif hits from JASPAR track --------------------
-jaspar_file = "data/JASPAR2018/MA0139.1.tsv"
-
-# header: chr `start (1-based)`   end `rel_score * 1000` `-1 * log10(p_value) * 100` strand
-col_names = c("chr", "start", "end", "name", "score", "log10_pval_times_100", "strand")
-motifDF <- read_tsv(jaspar_file,  col_names = col_names, skip = 1)
-motifDF <- motifDF %>% 
-  mutate(log10_pval = log10_pval_times_100 / 100) %>% 
-  filter(log10_pval >= 6)
-
-motifGR <- GRanges(motifDF$chr, IRanges(motifDF$start, motifDF$end),
-                   strand = motifDF$strand,
-                   score = motifDF$log10_pval,
-                   seqinfo = seqinfo(TxDb.Hsapiens.UCSC.hg19.knownGene)) %>% 
-  sort()
-
-# remove chrY (because not in bigWig files)
-# motifGR <- motifGR[seqnames(motifGR) != "chrY"]
-
-gi <- prepareCisPairs(motifGR, maxDist = 10^6)
-
-# rad21_fc_file = "data/ENCODE/Experiments/ENCFF000WCT.bigWig"
-rad21_fc_file = read_tsv(metadata_file) %>% 
-  filter(TF == "RAD21") %>% 
-  pull(filePath)
-
-gi <- addCor(gi, rad21_fc_file, name = "RAD21")
-
-# predict loops using default model
-gi <- chromloop::predLoops(
-  gi,
-  formula = ~ dist + strandOrientation + score_min + cor_RAD21,
-  betas = model$estimate_mean,
-  cutoff = NULL)
-
-loops <- gi %>% 
-  predLoops(formula = ~ dist + strandOrientation + score_min + cor_RAD21)
-
 
 # get regions enclosed by loops
 loopRange <- interactionRange(loops)
@@ -105,25 +61,6 @@ outer_extended_size = 500
 extLoops <- extendAnchors(loops, 
                           inner = inner_extended_size, 
                           outer = outer_extended_size)
-
-# ----------------------- Analyze motif overlap from JASPAR and RSAT------------
-jasparGR <- motifGR[motifGR$log10_pval >= 6]
-rsatGR <- motif.hg19.CTCF
-
-jaspar_unique <- sum(countOverlaps(jasparGR, rsatGR) == 0)
-rsat_unique <- sum(countOverlaps(rsatGR, jasparGR) == 0)
-
-jaspar_common <- sum(countOverlaps(jasparGR, rsatGR) > 0)
-rsat_common <- sum(countOverlaps(rsatGR, jasparGR) > 0)
-
-motif_counts <- tibble(
-  type = c("JASPAR only", "Common", "RSAT only"),
-  count = c(jaspar_unique, jaspar_common, rsat_unique)
-)
-p <- ggplot(motif_counts, aes(x = type, y = count)) + 
-  geom_bar(stat = "identity")
-
-ggsave(paste0(outPrefix, ".motif_overlap_JASPAR_RSAT.barplot.pdf"), w = 6, h = 3)
 
 # ----------------------- Parse enhancer-gene associations ---------------------
 seqInfo <- seqinfo(motif.hg19.CTCF)
