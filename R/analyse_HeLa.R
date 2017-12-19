@@ -50,6 +50,18 @@ screenPrefix <- file.path("results", paste0("v05_screen_TF_lfc.",
                                             "_w", WINDOW_SIZE, 
                                             "_b", BIN_SIZE))
 
+
+# True loops in HeLa from Rao et al:
+LoopRao2014_HeLa_File <- 
+  "data/Rao2014/GSE63525_HeLa_HiCCUPS_looplist_with_motifs.txt"
+
+# ChIA-PET loops in GM12878 from Tang et al 2015:
+LoopTang2015_HeLa_Files <- c(
+  "data/Tang2015/GSM1872888_HeLa_CTCF_PET_clusters.txt",
+  "data/Tang2015/GSM1872889_HeLa_RNAPII_PET_clusters.txt")
+
+
+
 # metadata file
 metaFile <- "data/ENCODE/metadata.fc_HELA_selected.tsv"
 
@@ -100,6 +112,32 @@ meta <- meta %>%
 # read CTCF moitf pairs as candidates
 gi <- read_rds(paste0(dataCandidatesPreifx, ".gi.rds"))
 
+# remove annotation from GM12878 cells
+mcols(gi)[, c("Loop_Rao_GM12878", "Loop_Tang2015_GM12878", "loop")] <- NULL
+
+
+# parse true loops in HeLa
+seqInfo <- seqinfo(gi)
+trueLoopsRao <- chromloop::parseLoopsRao(
+  LoopRao2014_HeLa_File, seqinfo = seqInfo)
+trueLoopsTang2015 <- do.call(
+  "c",
+  lapply(LoopTang2015_HeLa_Files, 
+         chromloop::parseLoopsTang2015, 
+         seqinfo = seqInfo))
+
+gi <- addInteractionSupport(gi, trueLoopsRao, "Loop_Rao_HeLa")
+gi <- addInteractionSupport(gi, trueLoopsTang2015, "Loop_Tang2015_HeLa")
+gi$loop <- factor(
+  gi$Loop_Tang2015_HeLa == "Loop" | gi$Loop_Rao_HeLa == "Loop",
+  c(FALSE, TRUE),
+  c("No loop", "Loop")
+)
+
+# save file for faster reload
+write_rds(gi, paste0(outPrefix, ".gi_raw.rds"))
+
+
 # Annotae with coverage and correlation -------------------------------------
 
 if (!GI_LOCAL ) {
@@ -138,7 +176,6 @@ if (!GI_LOCAL ) {
   gi <- read_rds(paste0(outPrefix, ".gi.rds"))
 }
 
-
 #-------------------------------------------------------------------------------
 # Analyse loopps --------------------------------------------------------
 #-------------------------------------------------------------------------------
@@ -150,6 +187,14 @@ df <- as_tibble(as.data.frame(mcols(gi))) %>%
 
 write_feather(df, paste0(outPrefix, ".df.feather"))
 # df <- read_feather(paste0(outPrefix, ".df.feather"))
+
+#===============================================================================
+# Number of positive looops in HeLA data
+#===============================================================================
+countDF <- df %>% 
+  count(loop) %>% 
+  mutate(percent = n / sum(n) * 100) %>% 
+  write_tsv(paste0(outPrefix, ".number_of_loops.tsv"))
 
 #===============================================================================
 # Training and prediction in cross-validation
@@ -224,15 +269,23 @@ write_feather(aucDF, paste0(outPrefix, ".aucDF.feather"))
 #-------------------------------------------------------------------------------
 # barplot of AUCs of ROC and PRC
 #-------------------------------------------------------------------------------
-p <- ggplot(aucDF, aes(x = name, y = aucs, fill = name)) +
+plotDF <- aucDF %>% 
+  mutate(pred_type = factor(
+    pred_type, 
+    levels = c("allTF", "bestN", "specificTF"),
+    labels = c("Avg. all TF", "Avg. best 10 TF", "Specific TF"))
+  )
+
+p <- ggplot(plotDF, aes(x = name, y = aucs, fill = name)) +
   geom_bar(stat = "identity", position = "dodge", color = "black") +
-  geom_text(aes(label = round(aucs, 2), y = aucs), size = 3, vjust = 1.2, angle = 0) +
+  # geom_text(aes(label = round(aucs, 2), y = aucs), size = 3, vjust = 1.2, angle = 0) +
+  geom_text(aes(label = round(aucs, 2), y = aucs), angle = 90, hjust = 1.2) +
   facet_grid(curvetypes ~ pred_type, scales = "free") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "none") +
   scale_fill_manual(values = COL_SELECTED_TF_2) +
   labs(x = "Models", y = "Prediction performance (AUC)")
-ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC_byPredtype.barplot.pdf"), w = 7, h = 7)
+ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC_by_predtype.barplot.pdf"), w = 5, h = 5)
 
 
 aucDFspecific <- aucDF %>%
@@ -274,7 +327,7 @@ rocDF <- curveDFsub %>%
 g <- ggplot(rocDF, aes(x = x, y = y, color = name)) +
   geom_line() +
   geom_abline(intercept = 0, slope = 1, lty = "dotted") +
-  theme_bw() + theme(aspect.ratio=1) +
+  theme_bw() +
   labs(x = "1 - Specificity", y = "Sensitivity") +
   scale_color_manual("",
                      values = COL_SELECTED_TF_2,
@@ -286,7 +339,7 @@ g <- ggplot(rocDF, aes(x = x, y = y, color = name)) +
                      guide = guide_legend(
                        override.aes = list(size = 2))
   ) +
-  theme(text = element_text(size = 15), legend.position = c(.7,.3),
+  theme(aspect.ratio = 1, text = element_text(size = 15), legend.position = c(.7,.3),
         legend.background = element_rect(fill = alpha('white', 0.1)))
 ggsave(g, file = paste0(outPrefix, ".ROC.pdf"), w = 5, h = 5)
 
@@ -305,7 +358,7 @@ prcDF <- curveDFsub %>%
 g <- ggplot(prcDF, aes(x = x, y = y, color = name)) +
   geom_line() +
   geom_abline(intercept = prc_base, slope = 0, lty = "dotted") +
-  theme_bw() + theme(aspect.ratio = 1) +
+  theme_bw() +
   labs(x = "Recall", y = "Precision") +
   scale_color_manual("",
                      values = COL_SELECTED_TF_2,
@@ -317,86 +370,62 @@ g <- ggplot(prcDF, aes(x = x, y = y, color = name)) +
                      guide = guide_legend(
                        override.aes = list(size = 2))
   ) +
-  theme(legend.position = "none")
+  theme(aspect.ratio = 1, 
+        legend.position = "none", 
+        text = element_text(size = 15))  
 
 ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
 
 
-#-----------------------------------------------------------------------------
-# Binary prediction
-#-----------------------------------------------------------------------------
-stop("Stop here. Rest needs to be implemented")
+#*******************************************************************************
+# Binary prediction ------
+#*******************************************************************************
 
-specificTFeval <- evalDF %>% 
-  filter(pred_type == "pred_specificTF") %>% 
-  mutate(label = list(df$loop))
+# bestNModelDF <- read_tsv(paste0(screenPrefix, ".bestNModelDF.tsv"))
 
-# get prediction object with measurements
-predObj <- ROCR::prediction(specificTFeval$pred, specificTFeval$label, levels(evalDF$label[[1]]))
-perfObj <- ROCR::performance(predObj, measure = "f")
+# read TF specific models
+TFspecific_ModelDF <- read_tsv(paste0(screenPrefix, ".TFspecific_ModelDF.tsv"))
 
-# get cutoff and f1-score for each model as lists
-cutoff_List <- slot(perfObj, "x.values")
-f1_List <- slot(perfObj, "y.values")
+Rad21_model <- TFspecific_ModelDF %>% 
+  filter(TF == "RAD21")
 
-# # plot f1-score vs. cutoffs
-# pdf(paste0(outPrefix, ".selectedTF.pred_allTF.f1-score_vs_cutoff.pdf"))
-#   plot(performance(predObj, measure = "f"), col = brewer.pal(nrow(evalDF), "Dark2"))
-# dev.off()
+BestN_cutof <- read_tsv(paste0(screenPrefix, ".topNf1ModelDF.tsv")) %>% 
+  pull(mean_max_cutoff)
 
-# plot f1-score vs. cutoffs using ggplot2
-f1DF <- tibble(
-  cutoff = unlist(cutoff_List),
-  f1_score = unlist(f1_List),
-  name = rep(unique(evalDF$name), map_int(cutoff_List, length))
+
+# add predictions using RAD21 model
+gi <- predLoops(
+  gi,
+  formula = loop ~ dist + strandOrientation + score_min + cor_RAD21,
+  betas = Rad21_model$estimate_mean,
+  colname = "pred_Rad21",
+  cutoff = NULL
 )
 
-p <- ggplot(f1DF, aes(x = cutoff, y = f1_score, color = name)) +
-  geom_line() +
-  theme_bw() + theme(legend.position = "none") +
-  scale_color_manual(values = COL_SELECTED_TF)
-ggsave(p, file = paste0(outPrefix, ".pred_specificTF.f1-score_vs_cutoff.pdf"), w = 5, h = 5)
+# add binary predictions
+mcols(gi)$predBinary_Rad21 <- !is.na(mcols(gi)$pred_Rad21) & mcols(gi)$pred_Rad21 >= BestN_cutof
 
-stop("Stop here. Rest needs to be implemented")
 
-#-------------------------------------------------------------------------------
-# get cutoff with maximal f1-score
-#-------------------------------------------------------------------------------
+#*******************************************************************************
+# Write predicted interactions as genome browser track
+#*******************************************************************************
 
-f1ModelDF <- evalDF %>% 
-  mutate(
-    cutoffs = cutoff_List,
-    f1_score = f1_List,
-    max_idx = map_int(f1_score, which.max),
-    max_cutoff = map2_dbl(cutoffs, max_idx, ~ .x[[.y]]),
-    max_f1 = map2_dbl(f1_score, max_idx, ~ .x[[.y]])
-  ) %>% 
-  select(name, max_idx, max_cutoff, max_f1)
 
-write_rds(f1ModelDF, paste0(outPrefix, ".f1ModelDF.rds"))  
-write_tsv(f1ModelDF, paste0(outPrefix, ".f1ModelDF.tsv"))  
+# write only subset of interacting pairs
+loopGI <- gi[gi$loop == "Loop"]
+writeLongRangeTrackFormat(
+  gi = loopGI, 
+  score_vec = rep(1, length(loopGI)), 
+  output_file = paste0(outPrefix, ".gi.HeLa.loop_sub.longrange_track.bed")
+)
 
-allTFf1ModelDF <- f1ModelDF %>% 
-  summarize(
-    mean_max_cutoff = mean(max_cutoff, na.rm = TRUE),
-    median_max_cutoff = median(max_cutoff, na.rm = TRUE),
-    sd_max_cutoff = sd(max_cutoff, na.rm = TRUE)
-  )
-write_tsv(allTFf1ModelDF, paste0(outPrefix, ".f1ModelDF.tsv"))  
-
-# output the mean of the top N models
-ranked_models <- levels(aucDF$modnames)[1:10]
-
-topNf1ModelDF <- f1ModelDF %>% 
-  filter(name %in% ranked_models) %>% 
-  summarize(
-    mean_max_cutoff = mean(max_cutoff, na.rm = TRUE),
-    median_max_cutoff = median(max_cutoff, na.rm = TRUE),
-    sd_max_cutoff = sd(max_cutoff, na.rm = TRUE)
-  )
-
-write_tsv(topNf1ModelDF, paste0(outPrefix, ".topNf1ModelDF.tsv"))  
-
+# write only subset of predicted loops
+rad21GI <- gi[gi$predBinary_Rad21]
+writeLongRangeTrackFormat(
+  gi = rad21GI, 
+  score_vec = 100 * rad21GI$pred_Rad21, 
+  output_file = paste0(outPrefix, ".gi.HeLa.pred_Rad21_sub.longrange_track.bed")
+)
 
 #===============================================================================
 #===============================================================================
