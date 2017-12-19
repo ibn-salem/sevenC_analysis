@@ -52,23 +52,31 @@ interactionRange <- function(gi){
   # assume only intra-chromosomal interactions
   stopifnot(all(InteractionSet::intrachr(gi)))
   
-  # make first anchor <= second anchor
-  gi <- methods::as(gi, "GInteractions")
-  GenomicRanges::strand(InteractionSet::regions(gi)) <- "*"
-  gi <- InteractionSet::swapAnchors(gi, mode = "order")
+  # assume no redundant interactions
+  stopifnot(length(gi) == length(swapAnchors(gi)))
+  
+  # swap anchors to make left anchor <= right anchor
+  
+  gi <- as(gi, "GInteractions")
+  ancGR <- regions(gi)
+  strand(ancGR) <- "*"
+  regions(gi) <- ancGR
+  gi <- swapAnchors(gi)
+
+  # get al anchors as GRanges object
+  ancGR <- regions(gi)
   
   # get chroms from first anchor
-  chr <- GenomeInfoDb::seqnames(InteractionSet::anchors(gi, "first"))
+  upAncIdx <- anchors(gi, "first", id = TRUE)
+  downAncIdx <- anchors(gi, "second", id = TRUE)
   
-  # take all coordinates to get smalles as start and largest as end
-  coords <- list(
-    GenomicRanges::start(InteractionSet::anchors(gi, "first")),
-    GenomicRanges::end(InteractionSet::anchors(gi, "first")),
-    GenomicRanges::start(InteractionSet::anchors(gi, "second")),
-    GenomicRanges::end(InteractionSet::anchors(gi, "second"))
-  )
-  start <- do.call(pmin, coords)
-  end <- do.call(pmax, coords)
+  # get chromosome, start of lef, and end of right anchor
+  chr <- seqnames(ancGR)[upAncIdx]
+  start <- start(ancGR)[upAncIdx]
+  end <- end(ancGR)[downAncIdx]
+  
+  # assume start <- end
+  stopifnot(all(start <= end))
   
   # create GenomicRanges object
   gr <- GenomicRanges::GRanges(
