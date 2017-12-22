@@ -1,31 +1,31 @@
-file_accession	data_type	TF	output_type	path
-ENCFF846UHE	ChIP-seq	STAT1	signal p-value	data/ENCODE/Experiments/ENCFF846UHE.bigWig
-ENCFF000WEQ	ChIP-seq	STAT1	signal	data/ENCODE/Experiments/ENCFF000WEQ.bigWig
-ENCFF867IGT	ChIP-seq	STAT1	fold change over control	data/ENCODE/Experiments/ENCFF867IGT.bigWig
-wgEncodeSydhTfbsGm12878Stat1StdSig	ChIP-seq	STAT1	signal_UCSC	data/ENCODE/UCSC/wgEncodeSydhTfbsGm12878Stat1StdSig.bigWig
-ENCFF952FQV	ChIP-seq	CTCF	signal p-value	data/ENCODE/Experiments/ENCFF952FQV.bigWig
-ENCFF000ARJ	ChIP-seq	CTCF	signal	data/ENCODE/Experiments/ENCFF000ARJ.bigWig
-ENCFF001HHT	ChIP-seq	CTCF	raw signal	data/ENCODE/Experiments/ENCFF001HHT.bigWig
-ENCFF629AAF	ChIP-seq	CTCF	fold change over control	data/ENCODE/Experiments/ENCFF629AAF.bigWig
-ENCFF000ROP	ChIP-seq	CTCF	base overlap signal	data/ENCODE/Experiments/ENCFF000ROP.bigWig
-wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdSig	ChIP-seq	CTCF	signal_UCSC	data/ENCODE/UCSC/wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdSig.bigWig
-ENCFF000SLA	DNase-seq	DNase-seq	base overlap signal	data/ENCODE/open_chromatin/ENCFF000SLA.bigWig
-ENCFF000SLH	DNase-seq	DNase-seq	signal	data/ENCODE/open_chromatin/ENCFF000SLH.bigWig
-wgEncodeEH000625	ChIP-seq	input	input	data/ENCODE/input/wgEncodeSydhTfbsGm12878InputStdSig.bigWig
-ENCFF567EGK	ChIP-seq	RAD21	fold change over control	data/ENCODE/Experiments/ENCFF567EGK.bigWig
-wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1	ChIP-seq	RAD21	qfraq	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
-wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1	ChIP-seq	RAD21	shifted_reads	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
-wgEncodeSydhTfbsGm12878Stat1StdAlnRep1	ChIP-seq	STAT1	qfraq	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Stat1StdAlnRep1.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
-wgEncodeSydhTfbsGm12878Stat1StdAlnRep1	ChIP-seq	STAT1	shifted_reads	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Stat1StdAlnRep1.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
-wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1	ChIP-seq	CTCF	qfraq	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
-wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1	ChIP-seq	CTCF	shifted_reads	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
-SRR2312570	ChIP-nexus	RAD21	qfraq	data/Tang2015/SRR2312570.flexcat_matched_barcode.fastq.bowtie2.hg19_filtered.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
-SRR2312570	ChIP-nexus	RAD21	shifted_reads	data/Tang2015/SRR2312570.flexcat_matched_barcode.fastq.bowtie2.hg19_filtered.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
-SRR2312571	ChIP-nexus	SMC3	qfraq	data/Tang2015/SRR2312571.flexcat_matched_barcode.fastq.bowtie2.hg19_filtered.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
-SRR2312571	ChIP-nexus	SMC3	shifted_reads	data/Tang2015/SRR2312571.flexcat_matched_barcode.fastq.bowtie2.hg19_filtered.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
-ENCFF235BXX	ChIP-seq	SMC3	fold change over control	data/ENCODE/Experiments/ENCFF235BXX.bigWig
-ENCFF000WDH	ChIP-seq	SMC3	qfraq	data/ENCODE/Experiments/ENCFF000WDH.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
-ENCFF000WDH	ChIP-seq	SMC3	shifted_reads	data/ENCODE/Experiments/ENCFF000WDH.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
-ENCFF639ZAX	ChIP-seq	ZNF143	fold change over control	data/ENCODE/Experiments/ENCFF639ZAX.bigWig
-ENCFF360QES	ChIP-seq	ZNF143	qfraq	data/ENCODE/Experiments/ENCFF360QES.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
-ENCFF360QES	ChIP-seq	ZNF143	shifted_reads	data/ENCODE/Experiments/ENCFF360QES.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
+file_accession	data_type	TF	output_type	download_url	path
+ENCFF846UHE	ChIP-seq	STAT1	signal p-value		data/ENCODE/Experiments/ENCFF846UHE.bigWig
+ENCFF000WEQ	ChIP-seq	STAT1	signal		data/ENCODE/Experiments/ENCFF000WEQ.bigWig
+ENCFF867IGT	ChIP-seq	STAT1	fold change over control		data/ENCODE/Experiments/ENCFF867IGT.bigWig
+wgEncodeSydhTfbsGm12878Stat1StdSig	ChIP-seq	STAT1	signal_UCSC		data/ENCODE/UCSC/wgEncodeSydhTfbsGm12878Stat1StdSig.bigWig
+ENCFF952FQV	ChIP-seq	CTCF	signal p-value		data/ENCODE/Experiments/ENCFF952FQV.bigWig
+ENCFF000ARJ	ChIP-seq	CTCF	signal		data/ENCODE/Experiments/ENCFF000ARJ.bigWig
+ENCFF001HHT	ChIP-seq	CTCF	raw signal		data/ENCODE/Experiments/ENCFF001HHT.bigWig
+ENCFF629AAF	ChIP-seq	CTCF	fold change over control		data/ENCODE/Experiments/ENCFF629AAF.bigWig
+ENCFF000ROP	ChIP-seq	CTCF	base overlap signal		data/ENCODE/Experiments/ENCFF000ROP.bigWig
+wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdSig	ChIP-seq	CTCF	signal_UCSC		data/ENCODE/UCSC/wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdSig.bigWig
+ENCFF000SLA	DNase-seq	DNase-seq	base overlap signal	https://www.encodeproject.org/files/ENCFF000SLA/@@download/ENCFF000SLA.bigWig	data/ENCODE/open_chromatin/ENCFF000SLA.bigWig
+ENCFF000SLH	DNase-seq	DNase-seq	signal	https://www.encodeproject.org/files/ENCFF000SLH/@@download/ENCFF000SLH.bigWig	data/ENCODE/open_chromatin/ENCFF000SLH.bigWig
+wgEncodeEH000625	ChIP-seq	input	input	http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/wgEncodeSydhTfbsGm12878InputStdSig.bigWig	data/ENCODE/input/wgEncodeSydhTfbsGm12878InputStdSig.bigWig
+ENCFF567EGK	ChIP-seq	RAD21	fold change over control		data/ENCODE/Experiments/ENCFF567EGK.bigWig
+wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1	ChIP-seq	RAD21	qfraq	http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
+wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1	ChIP-seq	RAD21	shifted_reads	http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Rad21IggrabAlnRep1.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
+wgEncodeSydhTfbsGm12878Stat1StdAlnRep1	ChIP-seq	STAT1	qfraq	http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/wgEncodeSydhTfbsGm12878Stat1StdAlnRep1.bam	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Stat1StdAlnRep1.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
+wgEncodeSydhTfbsGm12878Stat1StdAlnRep1	ChIP-seq	STAT1	shifted_reads	http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/wgEncodeSydhTfbsGm12878Stat1StdAlnRep1.bam	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Stat1StdAlnRep1.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
+wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1	ChIP-seq	CTCF	qfraq	http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1.bam	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
+wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1	ChIP-seq	CTCF	shifted_reads	http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1.bam	data/ENCODE/bam/wgEncodeSydhTfbsGm12878Ctcfsc15914c20StdAlnRep1.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
+SRR2312570	ChIP-nexus	RAD21	qfraq	NA	data/Tang2015/SRR2312570.flexcat_matched_barcode.fastq.bowtie2.hg19_filtered.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
+SRR2312570	ChIP-nexus	RAD21	shifted_reads	NA	data/Tang2015/SRR2312570.flexcat_matched_barcode.fastq.bowtie2.hg19_filtered.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
+SRR2312571	ChIP-nexus	SMC3	qfraq	NA	data/Tang2015/SRR2312571.flexcat_matched_barcode.fastq.bowtie2.hg19_filtered.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
+SRR2312571	ChIP-nexus	SMC3	shifted_reads	NA	data/Tang2015/SRR2312571.flexcat_matched_barcode.fastq.bowtie2.hg19_filtered.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
+ENCFF235BXX	ChIP-seq	SMC3	fold change over control		data/ENCODE/Experiments/ENCFF235BXX.bigWig
+ENCFF000WDH	ChIP-seq	SMC3	qfraq		data/ENCODE/Experiments/ENCFF000WDH.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
+ENCFF000WDH	ChIP-seq	SMC3	shifted_reads		data/ENCODE/Experiments/ENCFF000WDH.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
+ENCFF639ZAX	ChIP-seq	ZNF143	fold change over control		data/ENCODE/Experiments/ENCFF639ZAX.bigWig
+ENCFF360QES	ChIP-seq	ZNF143	qfraq		data/ENCODE/Experiments/ENCFF360QES.bam-qfrags_allChr_chip.bed.sorted.bedGraph.bw
+ENCFF360QES	ChIP-seq	ZNF143	shifted_reads		data/ENCODE/Experiments/ENCFF360QES.bam-shifted-reads_allChr_chip.bed.sorted.bedGraph.bw
