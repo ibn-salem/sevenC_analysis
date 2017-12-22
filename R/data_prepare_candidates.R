@@ -104,6 +104,22 @@ gi$loop <- factor(
 write_rds(gi, paste0(dataCandidatesPreifx, ".gi.rds"))
 
 #*******************************************************************************
+# Output motif sites as BED for loop and non-loop sites
+#*******************************************************************************
+ancGR <- regions(gi)
+loops <- gi[gi$loop == "Loop"]
+loopAncIdx <- unique(c(
+  anchors(loops, "first", id = TRUE),
+  anchors(loops, "second", id = TRUE)
+))
+
+loopAncGR <- ancGR[loopAncIdx]
+nonLoopAncGR <- ancGR[-loopAncIdx]
+
+export.bed(loopAncGR, paste0(dataCandidatesPreifx, ".loop_anchors.bed"))
+export.bed(nonLoopAncGR, paste0(dataCandidatesPreifx, ".non-loop_anchors.bed"))
+
+#*******************************************************************************
 # Add DNA sahpe predictions
 #*******************************************************************************
 
