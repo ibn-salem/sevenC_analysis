@@ -136,9 +136,18 @@ gi$loop <- factor(
 
 # save file for faster reload
 write_rds(gi, paste0(outPrefix, ".gi_raw.rds"))
+# gi <- read_rds(paste0(outPrefix, ".gi_raw.rds"))
 
+# Count positive loops  --------------------------------------------------------
+countLoopsDF <- gi %>% 
+  mcols() %>% 
+  as.data.frame() %>% 
+  as.tibble() %>% 
+  count(loop) %>% 
+  mutate(percent = n / sum(n) * 100) %>% 
+  write_tsv(paste0(outPrefix, ".count_positive_loops.tsv"))
 
-# Annotae with coverage and correlation -------------------------------------
+# Annotae with coverage and correlation ----------------------------------------
 
 if (!GI_LOCAL ) {
   
@@ -272,8 +281,8 @@ write_feather(aucDF, paste0(outPrefix, ".aucDF.feather"))
 plotDF <- aucDF %>% 
   mutate(pred_type = factor(
     pred_type, 
-    levels = c("allTF", "bestN", "specificTF"),
-    labels = c("Avg. all TF", "Avg. best 10 TF", "Specific TF"))
+    levels = c("specificTF", "allTF", "bestN"),
+    labels = c("Specific TF", "Avg. all TF", "Avg. best 10 TF"))
   )
 
 p <- ggplot(plotDF, aes(x = name, y = aucs, fill = name)) +
@@ -284,7 +293,8 @@ p <- ggplot(plotDF, aes(x = name, y = aucs, fill = name)) +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "none") +
   scale_fill_manual(values = COL_SELECTED_TF_2) +
-  labs(x = "Models", y = "Prediction performance (AUC)")
+  labs(x = "ChIP-seq data", y = "Prediction performance (AUC)")
+
 ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC_by_predtype.barplot.pdf"), w = 5, h = 5)
 
 
