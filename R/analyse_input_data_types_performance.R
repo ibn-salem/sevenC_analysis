@@ -153,12 +153,13 @@ subDF <- aucDFmed %>%
   filter(
     curvetypes == "PRC",
     !output_type %in% c("base overlap signal", "raw signal", "signal p-value", "signal_UCSC"),
-    !(output_type == "signal" & data_type == "ChIP-seq")
+    is.na(output_type) | !(output_type == "signal" & data_type == "ChIP-seq")
     ) %>% 
   mutate(
     plot_name = ifelse(!is.na(TF), TF, modnames),
     data_type = factor(data_type, c("ChIP-seq", "DNase-seq", "ChIP-nexus")),
-    output_type = factor(output_type, c("fold change over control", "shifted_reads", "qfraq", "input", "signal"))
+    output_type = factor(output_type, c("fold change over control", "shifted_reads", "qfraq", "input", "signal")),
+    # TF = factor(TF, levels = c(SELECTED_TF, "Dist", "Orientation", "Motif", "Dist+Orientation+Motif"))
   )
 
 p <- ggplot(subDF, aes(x = plot_name, y = aucs_mean, fill = TF)) +
