@@ -123,7 +123,14 @@ names(COL_TF) <- meta$TF
 COL_TF[match(SELECTED_TF, names(COL_TF))] <- COL_SELECTED_TF_2
 # meta <- meta[1:3, ]
 
-# read preprocessed CTCF moitf pairs as candidates
+# Output table with accession numbers for all TFs ------------------------------
+access_table <- meta %>%
+  select(TF, `Biosample term name`, `Output type`, `File accession`, `File download URL`, `Experiment accession`, everything()) %>% 
+  select(-usedTF, -filePath, -file_nrep, -exp_nrep, -output_type) %>% 
+  write_tsv(paste0(outPrefix, ".access_table.tsv"))
+
+
+# read preprocessed CTCF moitf pairs as candidates -----------------------------
 gi <- read_rds(paste0(dataCandidatesPreifx, ".gi.rds"))
 
 # Annotae with coverage and correlation -------------------------------------
@@ -303,6 +310,7 @@ ranked_models <- aucDF %>%
   pull(modnames)
 
 write_rds(ranked_models, paste0(outPrefix, "ranked_models.rds"))
+# ranked_models <- read_rds(paste0(outPrefix, "ranked_models.rds"))
 
 # order aucDF by ranks
 aucDF <- aucDF %>% 
@@ -397,6 +405,7 @@ modelDF <- modelDF %>%
   bind_rows(allTF, bestN)
 
 write_tsv(modelDF, paste0(outPrefix, ".modelDF.tsv"))
+# modelDF <- read_tsv(paste0(outPrefix, ".modelDF.tsv"))
 
 # # add meta data
 # modelDF <- modelDF %>% 
@@ -408,6 +417,16 @@ paramByModel <- modelDF %>%
     n = n(),
     estimate_mean = mean(estimate),
     estimate_sd = sd(estimate)
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+    name = factor(name, 
+      rev(c(SELECTED_TF, "allTF", "bestN")),
+      rev(c(SELECTED_TF, "Avg. all TF", "Avg. best 10 TF"))),
+    term = factor(
+      term, 
+      c("(Intercept)", "dist", "strandOrientationforward", "strandOrientationreverse", "strandOrientationdivergent",  "score_min", "cor"),
+      c("Intercept", "Dist", "Orientation\nForward", "Orientation\nReverse", "Orientation\nDivergent", "Motif score", "ChIP-seq\nCorrelation"))
   )
 
 p <- ggplot(paramByModel, aes(x = name, y = estimate_mean, fill = name)) + 
@@ -420,9 +439,9 @@ p <- ggplot(paramByModel, aes(x = name, y = estimate_mean, fill = name)) +
   coord_flip() +
   labs(y = "Parameter estimate", x = "Model") + 
   theme_bw() + #scale_fill_manual(values = COL_TF) + 
+  scale_fill_manual(values = c(COL_SELECTED_TF_2, "Avg. all TF" = "lightgray", "Avg. best 10 TF" = "darkgray")) +
   theme(legend.position = "none", axis.text.x = element_text(angle = 45, hjust = 1))
-
-ggsave(p, file = paste0(outPrefix, ".selected_models.paramter.barplot.pdf"), w = 12, h = 6)
+ggsave(p, file = paste0(outPrefix, ".selected_models.paramter.barplot.pdf"), w = 7, h = 3.5)
 
 
 #-------------------------------------------------------------------------------
@@ -504,6 +523,7 @@ aucDF <- as_tibble(auc(curves)) %>%
 
 write_feather(aucDF, paste0(outPrefix, "aucDF.feather"))
 # aucDF <- read_feather(paste0(outPrefix, "aucDF.feather"))
+# ranked_models <- read_rds(paste0(outPrefix, "ranked_models.rds"))
 
 # build color vector with TFs as names
 # COL_TF <- COL_TF[seq(1, length(ranked_models))]
@@ -539,19 +559,27 @@ ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF_and_predType.barplot.pdf"
 
 # plot only selected TFs
 selectedDFmed <- aucDFmed %>% 
-  filter(name %in% SELECTED_TF)
+  filter(name %in% SELECTED_TF) %>%
+  ungroup() %>% 
+  mutate(pred_type = factor(
+    pred_type, 
+    c("specificTF", "rad21", "allTF", "bestNTF"),
+    c("Specific TF", "RAD21", "Avg. all TF", "Avg. best 10 TF")
+  ))
+  
 
 p <- ggplot(selectedDFmed, aes(x = name, y = aucs_mean, fill =  pred_type)) +
   geom_bar(stat = "identity", color = "black", position = "dodge") +
   geom_errorbar(aes(ymin = aucs_mean - aucs_sd, ymax = aucs_mean + aucs_sd),
                 width = .25, position = position_dodge(width = 1)) + 
-  geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), size = 3, hjust = 1, angle = 90, position = position_dodge(width = 1)) +
+  geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), 
+            hjust = 1.1, angle = 90, position = position_dodge(width = 1)) +
   facet_grid(curvetypes ~ ., scales = "free") +
   theme_bw() +
-  theme(axis.text.x = element_text(angle = 60, hjust = 1), legend.position = "bottom") +
-  scale_fill_brewer(palette = "Blues") +
-  labs(x = "Models", y = "AUC")
-ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF_and_predType_selectedTF.barplot.pdf"), w = 7, h = 7)
+  theme(legend.position = "bottom") +
+  scale_fill_brewer(palette = "Blues", name = "Models:") +
+  labs(x = "ChIP-seq data", y = "Prediction performance (AUC)")
+ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF_and_predType_selectedTF.barplot.pdf"), w = 6, h = 6)
 
 # boxplot of AUCs across TFs
 p <- ggplot(aucDFmed, aes(x = pred_type, y = aucs_mean, fill = pred_type)) +
