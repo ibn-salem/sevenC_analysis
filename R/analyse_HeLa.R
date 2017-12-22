@@ -105,7 +105,11 @@ meta <- meta %>%
   mutate(name = TF) %>%
   select(TF, name, filePath, everything())
 
-# meta <- meta[1:3, ]
+# Output table with accession numbers for all TFs ------------------------------
+access_table <- meta %>%
+  select(TF, `Biosample term name`, `Output type`, `File accession`, `File download URL`, `Experiment accession`, everything()) %>% 
+  select(-usedTF, -filePath, -file_nrep, -exp_nrep, -output_type, -name, -size) %>% 
+  write_tsv(paste0(outPrefix, ".access_table.tsv"))
 
 # Select motifs and parse input data -----------------------------------
 
