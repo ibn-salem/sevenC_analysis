@@ -1,17 +1,17 @@
 # Analysis of chromatin loop predictions
 
 This repository contains the analysis of chromatin loopsing preidctions using 
-the R package [chromloop](https://github.com/ibn-salem/chromloop). 
+the R package [sevenC](https://github.com/ibn-salem/sevenC). 
 It aims to reproducibly document all analyis in the associated publicaton. 
-More details on the method itself can be found here on the chromloop 
-[website](https://ibn-salem.github.io/chromloop/).
+More details on the method itself can be found here on the sevenC 
+[website](https://ibn-salem.github.io/sevenC/).
 
 
 # Order of analysis scripts
 1. [download.sh](download.sh)
 1. [data_prepare_candidates.R](R/data_prepare_candidates.R)
 1. [analyse_motif_significance.R](R/analyse_motif_significance.R)
-1. [screen_TFslfc.R](R/screen_TFslfc.R)
+1. [screen_TFs_lfc.R](R/screen_TFs_lfc.R)
 1. [analyse_selected_models.R](R/analyse_selected_models.R)
 1. [loop_freaters_EDA.R](R/loop_freaters_EDA.R)
 1. [analyse_HeLa.R](R/analyse_HeLa.R)
@@ -49,7 +49,7 @@ Rscript R/analyse_motif_significance.R
 ## Screen TFs
 In this step all TF ChIP-seq experiments from ENCODE in human GM12878 cells are analysed and compared for ther perfrmance in predicting chromatin interaction loops. 
 ```
-Rscript R/screen_TFslfc.R
+Rscript R/screen_TFs_lfc.R
 ```
 
 To run the predictions and performance evaluation using six selected TF ChIP-seq data sets, run the follwoing R script. 
