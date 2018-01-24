@@ -3,7 +3,7 @@
 ################################################################################
 
 
-require(chromloop)    # devtools::install_github("ibn-salem/chromloop")
+require(sevenC)    # devtools::install_github("ibn-salem/sevenC")
 require(rtracklayer)  # for import() of BED files
 require(TxDb.Mmusculus.UCSC.mm9.knownGene)
 require(TxDb.Mmusculus.UCSC.mm10.knownGene)
@@ -18,7 +18,7 @@ require(RColorBrewer)   # for nice colors
 require(feather)      # for efficient storing of data.frames
 require(networkBMA)
 require(ggsignif)     # to calculate p-values on plots
-source("R/chromloop.functions.R")
+source("R/sevenC.functions.R")
 source("R/gr_associations.R")
 
 # 0) Set parameter --------------------------------------------------------

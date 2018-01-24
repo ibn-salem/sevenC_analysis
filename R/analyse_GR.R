@@ -1,9 +1,9 @@
 ################################################################################
-# Analysis of predictd chromatin looping interactions using the chromloop tool
+# Analysis of predictd chromatin looping interactions using the sevenC tool
 ################################################################################
 
 
-require(chromloop)    # devtools::install_github("ibn-salem/chromloop")
+require(sevenC)    # devtools::install_github("ibn-salem/sevenC")
 require(rtracklayer)  # to import() BED files
 require(EnsDb.Hsapiens.v75)
 require(TxDb.Hsapiens.UCSC.hg19.knownGene)  # for human genes
@@ -14,7 +14,7 @@ require(precrec)      # for ROC and PRC curves
 require(RColorBrewer)   # for nice colors
 require(feather)      # for efficient storing of data.frames
 require(networkBMA)
-source("R/chromloop.functions.R")
+source("R/sevenC.functions.R")
 source("R/gr_associations.R")
 
 # 0) Set parameter --------------------------------------------------------

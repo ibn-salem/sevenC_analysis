@@ -1,5 +1,5 @@
 #*******************************************************************************
-# Analysis different input data types for loop prediction with chromloop. ------
+# Analysis different input data types for loop prediction with sevenC. ------
 #*******************************************************************************
 
 library(tidyverse)    # for tidy data
@@ -9,7 +9,7 @@ library(RColorBrewer)   # for nice colors
 library(feather)      # for efficient storing of data.frames
 library(ROCR)         # for binary clasification metrices
 
-source("R/chromloop.functions.R")
+source("R/sevenC.functions.R")
 
 # Set parameter ----------------------------------------------------------------
 

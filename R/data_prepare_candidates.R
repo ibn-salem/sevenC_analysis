@@ -2,7 +2,7 @@
 # Read CTCF motif sites from JASPAR TSV files and provide it as GRanges object
 #*******************************************************************************
 
-library(chromloop)  # to import() BED files
+library(sevenC)  # to import() BED files
 require(TxDb.Hsapiens.UCSC.hg19.knownGene)  # for seqinfo object
 require(BSgenome.Hsapiens.UCSC.hg19) # for human genome sequence
 require(DNAshapeR)    # for DNA shape prediction
@@ -90,7 +90,7 @@ trueLoopsRao <- parseLoopsRao(
 trueLoopsTang2015 <- do.call(
   "c",
   map(LoopTang2015_GM12878_Files, 
-         chromloop::parseLoopsTang2015, 
+         sevenC::parseLoopsTang2015, 
          seqinfo = seqInfoHg19))
 
 gi <- addInteractionSupport(gi, trueLoopsRao, "Loop_Rao_GM12878")

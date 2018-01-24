@@ -1,7 +1,7 @@
-# Analysis of predictd chromatin looping interactions using the chromloop tool
+# Analysis of predictd chromatin looping interactions using the sevenC tool
 
 
-# require(chromloop)    # devtools::install_github("ibn-salem/chromloop")
+# require(sevenC)    # devtools::install_github("ibn-salem/sevenC")
 require(InteractionSet)
 require(tidyverse)    # for tidy data
 require(stringr)      # for string functions
@@ -103,7 +103,7 @@ gi <- read_rds(paste0(outPrefix, ".gi.rds"))
 # Compaire motifs from RSAT and JASPAR ----
 #*******************************************************************************
 jasparGR <- read_rds(paste0(dataCandidatesPreifx, "motifGR.rds")) 
-rsatGR <- chromloop::motif.hg19.CTCF
+rsatGR <- sevenC::motif.hg19.CTCF
 
 jaspar_unique <- sum(countOverlaps(jasparGR, rsatGR) == 0)
 rsat_unique <- sum(countOverlaps(rsatGR, jasparGR) == 0)
@@ -525,7 +525,7 @@ param_list <- mod_list %>%
   map("estimate")
 
 pred_list <- map2(formula_list, param_list, 
-                  ~chromloop:::predLogit(data = df, formula = .x, betas = .y))
+                  ~sevenC:::predLogit(data = df, formula = .x, betas = .y))
 
 mdat <- precrec::mmdata(pred_list, labels = list(df$loop, df$loop), modnames = c("dist", "log10_dist"))
 curves <- precrec::evalmod(mdat)

@@ -2,7 +2,7 @@
 # Anaylse pairwise motif similairity by alignemnt for coandiate pairs as feature
 #*******************************************************************************
 
-library(chromloop)  # to import() BED files
+library(sevenC)  # to import() BED files
 require(BSgenome.Hsapiens.UCSC.hg19)
 library(tidyverse)    # for tidy data
 library(stringr)      # for string functions

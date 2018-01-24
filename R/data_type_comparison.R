@@ -1,9 +1,9 @@
 ################################################################################
-# Analysis of predictd chromatin looping interactions using the chromloop tool
+# Analysis of predictd chromatin looping interactions using the sevenC tool
 ################################################################################
 
 
-require(chromloop)    # devtools::install_github("ibn-salem/chromloop")
+require(sevenC)    # devtools::install_github("ibn-salem/sevenC")
 require(rtracklayer)  # to import() BED files
 require(BiocParallel) # for parallelisation
 
@@ -89,7 +89,7 @@ write_tsv(meta, paste(outPrefix, ".meta_filtered.tsv"))
 # Select motifs and parse input data -----------------------------------
 if (!GI_LOCAL) {
   
-  ancGR <- chromloop::motif.hg19.CTCF
+  ancGR <- sevenC::motif.hg19.CTCF
 
   # filter for p-valu <= MIN_MOTIF_SIG
   ancGR <- ancGR[ancGR$sig >= MIN_MOTIF_SIG]
@@ -98,21 +98,21 @@ if (!GI_LOCAL) {
   
 
   # get all pairs within 1M distance
-  gi <- chromloop::getCisPairs(ancGR, maxDist = 10^6)
+  gi <- sevenC::getCisPairs(ancGR, maxDist = 10^6)
   
   # add strand combinations
-  gi <- chromloop::addStrandCombination(gi)
+  gi <- sevenC::addStrandCombination(gi)
 
   # add motif score
-  gi <- chromloop::addMotifScore(gi, colname = "sig")
+  gi <- sevenC::addMotifScore(gi, colname = "sig")
   
   
   # parse loops
-  trueLoopsRao <- chromloop::parseLoopsRao(
+  trueLoopsRao <- sevenC::parseLoopsRao(
     LoopRao2014_GM12878_File, seqinfo = seqInfo)
   
-  trueLoopsTang2015_CTCF <- chromloop::parseLoopsTang2015(LoopTang2015_GM12878_Files[[1]], seqinfo = seqInfo)
-  trueLoopsTang2015_PolII <- chromloop::parseLoopsTang2015(LoopTang2015_GM12878_Files[[2]], seqinfo = seqInfo)
+  trueLoopsTang2015_CTCF <- sevenC::parseLoopsTang2015(LoopTang2015_GM12878_Files[[1]], seqinfo = seqInfo)
+  trueLoopsTang2015_PolII <- sevenC::parseLoopsTang2015(LoopTang2015_GM12878_Files[[2]], seqinfo = seqInfo)
   trueLoopsTang2015 <- c(trueLoopsTang2015_CTCF, trueLoopsTang2015_PolII)
   
   gi <- addInteractionSupport(gi, trueLoopsRao, "Loop_Rao_GM12878")
@@ -137,7 +137,7 @@ if (!GI_LOCAL ) {
 
     stopifnot(file.exists(meta$path[i]))
     
-    regions(gi) <- chromloop::addCovToGR(
+    regions(gi) <- sevenC::addCovToGR(
       regions(gi), 
       meta$path[i], 
       window = WINDOW_SIZE,
@@ -146,7 +146,7 @@ if (!GI_LOCAL ) {
     )
     
     # add correlations
-    gi <- chromloop::applyToCloseGI(
+    gi <- sevenC::applyToCloseGI(
       gi, 
       datcol = paste0("cov_", meta$name[i]),
       fun = cor, 

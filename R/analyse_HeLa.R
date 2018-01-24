@@ -3,7 +3,7 @@
 ################################################################################
 
 
-require(chromloop)    # devtools::install_github("ibn-salem/chromloop")
+require(sevenC)    # devtools::install_github("ibn-salem/sevenC")
 require(tidyverse)    # for tidy data
 require(stringr)      # for string functions
 require(modelr)       # for tidy modeling
@@ -15,7 +15,7 @@ require(pryr) # for object_size()
 require(feather)      # for efficient storing of data.frames
 require(multidplyr)   # for partition() and collect() to work in parallel
 
-source("R/chromloop.functions.R")
+source("R/sevenC.functions.R")
 
 
 # 0) Set parameter --------------------------------------------------------
@@ -122,12 +122,12 @@ mcols(gi)[, c("Loop_Rao_GM12878", "Loop_Tang2015_GM12878", "loop")] <- NULL
 
 # parse true loops in HeLa
 seqInfo <- seqinfo(gi)
-trueLoopsRao <- chromloop::parseLoopsRao(
+trueLoopsRao <- sevenC::parseLoopsRao(
   LoopRao2014_HeLa_File, seqinfo = seqInfo)
 trueLoopsTang2015 <- do.call(
   "c",
   lapply(LoopTang2015_HeLa_Files, 
-         chromloop::parseLoopsTang2015, 
+         sevenC::parseLoopsTang2015, 
          seqinfo = seqInfo))
 
 gi <- addInteractionSupport(gi, trueLoopsRao, "Loop_Rao_HeLa")
@@ -237,9 +237,9 @@ predDF <- designDF %>%
   # add predictions using specific TF and other models as columns
   mutate(
     pred_specificTF = map2(design, betas_specificTF, 
-                           ~ chromloop:::predLogit(df, formula = .x, betas = .y)),
-    pred_allTF = map(design, ~ chromloop:::predLogit(df, .x, allTfModelDF$estimate_mean)),
-    pred_bestN = map(design, ~ chromloop:::predLogit(df, .x, bestNModelDF$estimate_mean))
+                           ~ sevenC:::predLogit(df, formula = .x, betas = .y)),
+    pred_allTF = map(design, ~ sevenC:::predLogit(df, .x, allTfModelDF$estimate_mean)),
+    pred_bestN = map(design, ~ sevenC:::predLogit(df, .x, bestNModelDF$estimate_mean))
   )
   
 write_rds(predDF, path = paste0(outPrefix, "predDF.rds"))

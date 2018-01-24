@@ -1,9 +1,9 @@
 ################################################################################
-# Analysis of predictd chromatin looping interactions using the chromloop tool
+# Analysis of predictd chromatin looping interactions using the sevenC tool
 ################################################################################
 
 
-library(chromloop)    # devtools::install_github("ibn-salem/chromloop")
+library(sevenC)    # devtools::install_github("ibn-salem/sevenC")
 library(tidyverse)    # for tidy data
 library(stringr)      # for string functions
 library(modelr)       # for tidy modeling
@@ -17,7 +17,7 @@ library(multidplyr)   # for partition() and collect() to work in parallel
 library(ROCR)         # for binary clasification scores
 
 
-source("R/chromloop.functions.R")
+source("R/sevenC.functions.R")
 
 
 # 0) Set parameter --------------------------------------------------------
@@ -88,10 +88,10 @@ names(COL_SELECTED_TF_2) <- SELECTED_TF
 
 # partion data for parallel processing
 cluster <- create_cluster(N_CORES) %>% 
-  cluster_library(packages = c("chromloop", "tidyverse"))
+  cluster_library(packages = c("sevenC", "tidyverse"))
 
 # evaluate help function code on each cluster
-cluster_eval(cluster, source("R/chromloop.functions.R"))
+cluster_eval(cluster, source("R/sevenC.functions.R"))
 
 
 #-------------------------------------------------------------------------------
@@ -254,7 +254,7 @@ cvDF <- cvDF %>%
         design,
         map(tidy_model, "estimate")
       ),
-      chromloop:::predLogit
+      sevenC:::predLogit
     ),
     label = map(map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), "loop")
   ) %>% 
@@ -468,18 +468,18 @@ cvDF <- cvDF %>%
     pred_allTF = map2(
       .x = map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), 
       .y = design, 
-      .f = chromloop:::predLogit,
+      .f = sevenC:::predLogit,
       betas = allTfModelDF$estimate_mean),
     # add prediction using N best models
     pred_bestNTF = map2(
       .x = map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), 
       .y = design, 
-      .f = chromloop:::predLogit,
+      .f = sevenC:::predLogit,
       betas = bestNModelDF$estimate_mean),
     pred_rad21 = map2(
       .x = map(Fold, tidy_assessment, data = df, tidyCV = tidyCV),
       .y = design,
-      .f = chromloop:::predLogit,
+      .f = sevenC:::predLogit,
       betas = Rad21mod$estimate)
     ) %>% 
   collect()

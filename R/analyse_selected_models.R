@@ -1,9 +1,9 @@
 ################################################################################
-# Analysis of predictd chromatin looping interactions using the chromloop tool
+# Analysis of predictd chromatin looping interactions using the sevenC tool
 ################################################################################
 
 
-library(chromloop)    # devtools::install_github("ibn-salem/chromloop")
+library(sevenC)    # devtools::install_github("ibn-salem/sevenC")
 library(rtracklayer)  # to import() BED files
 library(tidyverse)    # for tidy data
 library(stringr)      # for string functions
@@ -16,7 +16,7 @@ library(feather)      # for efficient storing of data.frames
 library(multidplyr)   # for partition() and collect() to work in parallel
 library(ROCR)         # for binary clasification metrices
 
-source("R/chromloop.functions.R")
+source("R/sevenC.functions.R")
 
 # 0) Set parameter --------------------------------------------------------
 
@@ -84,10 +84,10 @@ names(COL_SELECTED_TF_2) <- SELECTED_TF
 
 # partion data for parallel processing
 cluster <- create_cluster(N_CORES) %>%
-  cluster_library(packages = c("chromloop", "tidyverse"))
+  cluster_library(packages = c("sevenC", "tidyverse"))
 
 # evaluate help function code on each cluster
-cluster_eval(cluster, source("R/chromloop.functions.R"))
+cluster_eval(cluster, source("R/sevenC.functions.R"))
 
 
 #-------------------------------------------------------------------------------
@@ -259,7 +259,7 @@ cvDF <- cvDF %>%
         design,
         map(tidy_model, "estimate")
       ),
-      chromloop:::predLogit
+      sevenC:::predLogit
     ),
     label = map(map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), "loop")
   ) %>% 

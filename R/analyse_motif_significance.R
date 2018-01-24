@@ -3,7 +3,7 @@
 #*******************************************************************************
 
 
-library(chromloop)  # to import() BED files
+library(sevenC)  # to import() BED files
 require(TxDb.Hsapiens.UCSC.hg19.knownGene)  # for seqinfo object
 library(tidyverse)    # for tidy data
 library(stringr)      # for string functions
@@ -81,7 +81,7 @@ trueLoopsRao <- parseLoopsRao(
 trueLoopsTang2015 <- do.call(
   "c",
   map(LoopTang2015_GM12878_Files, 
-      chromloop::parseLoopsTang2015, 
+      sevenC::parseLoopsTang2015, 
       seqinfo = seqInfoHg19))
 
 

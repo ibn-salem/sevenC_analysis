@@ -1,5 +1,5 @@
 #*******************************************************************************
-# Analysis different input data types for loop prediction with chromloop. ------
+# Analysis different input data types for loop prediction with sevenC. ------
 #*******************************************************************************
 library(tidyverse)    # for tidy data
 library(RColorBrewer)   # for nice colors

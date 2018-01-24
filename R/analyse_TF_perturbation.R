@@ -1,10 +1,10 @@
 ################################################################################
-# Analysis of predictd chromatin looping interactions using the chromloop tool
+# Analysis of predictd chromatin looping interactions using the sevenC tool
 # by predicting regulated genes as validated by TF perturbation experiments
 ################################################################################
 
 
-library(chromloop)    # devtools::install_github("ibn-salem/chromloop")
+library(sevenC)    # devtools::install_github("ibn-salem/sevenC")
 library(rtracklayer)  # to import() BED files
 library(EnsDb.Hsapiens.v75)
 library(TxDb.Hsapiens.UCSC.hg19.knownGene)  # for human genes
@@ -19,7 +19,7 @@ library(pryr) # for object_size()
 library(feather)      # for efficient storing of data.frames
 library(multidplyr)   # for partition() and collect() to work in parallel
 library(readxl)       # to read excel files
-source("R/chromloop.functions.R")
+source("R/sevenC.functions.R")
 source("R/gr_associations.R")
 
 

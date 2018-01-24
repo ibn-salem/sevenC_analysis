@@ -4,7 +4,7 @@
 ################################################################################
 
 
-library(chromloop)    # devtools::install_github("ibn-salem/chromloop")
+library(sevenC)    # devtools::install_github("ibn-salem/sevenC")
 library(rtracklayer)  # to import() BED files
 # library(EnsDb.Hsapiens.v75)
 library(TxDb.Hsapiens.UCSC.hg19.knownGene)  # for human genes
@@ -13,7 +13,7 @@ library(stringr)      # for string functions
 library(RColorBrewer)   # for nice colors
 library(feather)      # for efficient storing of data.frames
 library(readxl)       # to read excel files
-source("R/chromloop.functions.R")
+source("R/sevenC.functions.R")
 source("R/gr_associations.R")
 
 
@@ -44,7 +44,7 @@ BestN_cutof <- read_tsv(paste0(models_prefix, ".topNf1ModelDF.tsv")) %>%
   pull(mean_max_cutoff)
 
 # predict loops using default model
-loops <- chromloop::predLoops(
+loops <- sevenC::predLoops(
   gi,
   formula = ~ dist + strandOrientation + score_min + cor_RAD21,
   betas = model$estimate_mean,
