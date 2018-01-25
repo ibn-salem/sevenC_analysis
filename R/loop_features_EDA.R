@@ -248,6 +248,7 @@ p <- ggplot(df, aes(dist/10^3, fill = loop, color = loop)) +
   theme_bw() + theme(text = element_text(size = 20), legend.position = "bottom") + 
   labs(y = "Density", x = "Loop Distance [kb]") 
 ggsave(p, file = paste0(outPrefix, ".distance_by_loop.density.pdf"), w = 7, h = 3.5)
+ggsave(p, file = paste0(outPrefix, ".distance_by_loop.density_small.pdf"), w = 3, h = 1.4)
 
 
 #======================== Motif orientation ======================
@@ -334,29 +335,34 @@ bothNoSupport <- gi$Loop_Rao_GM12878  != "Loop" & gi$Loop_Tang2015_GM12878 != "L
 #   379220, 357242, 16818,
 #   163948, 69243, 214045, 
 # )
+
+# # fix to selected examples
+# rand_examples = c(
+#   346768, 362508, 26601, 84646 (non-centered)
+#   71035 , 247338, 173202
+# )
+
+# good loop: 89052 195813 254449
+# good no-loop: 947 (no signal)
 # fix to selected examples
 rand_examples = c(
-  346768, 362508, 26601,
-  71035 , 247338, 173202
+  89052, 362508, 84646,
+  17367, 241589, 947
 )
-
 write_rds(rand_examples, paste0(outPrefix, ".rand_examples.rds"))
 
-# Loop examples : 357242, 16818, 452694, 379220
-# No Loop example : 214045, 69243, 163948
-
-cov_up <- covList[anchors(gi[rand_examples], type = "first", id = TRUE)]
-cov_down <- covList[anchors(gi[rand_examples], type = "second", id = TRUE)]
+cov_left <- covList[anchors(gi[rand_examples], type = "first", id = TRUE)]
+cov_right <- covList[anchors(gi[rand_examples], type = "second", id = TRUE)]
 
 covDF <- tibble(
     interaction_id = rand_examples,
     loop = rep(c("Loop", "No loop"), each = 3),
-    reg = c(3, 2, 1, 3, 2, 1),
-    cov_up = as.list(cov_up),
-    cov_down = as.list(cov_down),
+    reg = c(1, 2, 3, 1, 2, 3),
+    cov_left = as.list(cov_left),
+    cov_right = as.list(cov_right),
   ) %>%
-  gather(key = "anchor", value = "cov", cov_up, cov_down) %>%
-  mutate(anchor = factor(str_replace(anchor, "cov_", ""), c("up", "down"))) %>%
+  gather(key = "anchor", value = "cov", cov_left, cov_right) %>%
+  mutate(anchor = factor(str_replace(anchor, "cov_", ""), c("left", "right"))) %>%
   unnest(cov) %>%
   mutate(pos = rep(1:WINDOW_SIZE, n()/WINDOW_SIZE) - WINDOW_SIZE/2)
 
@@ -366,10 +372,12 @@ write_feather(covDF, paste0(outPrefix, ".6_random_pairs.feather"))
 
 p = ggplot(covDF, aes(x = pos, fill = anchor)) +
   geom_ribbon(aes(ymin = 0, ymax = cov)) +
+  geom_vline(xintercept = 0, linetype = 3) + 
   facet_grid(reg ~ loop, scales = "free_y") +
   theme_bw() +
   theme(text = element_text(size = 20),
         axis.text.x = element_text(angle = 45, hjust = 1),
+  # ) +
         strip.text.y = element_blank()) +
   labs(y = paste(FACT, "ChIP-seq"), x = "Positions around CTCF motif") +
   scale_fill_manual(values = alpha(COL_ANCHOR, 0.5))
@@ -395,14 +403,14 @@ factAncDF <- covDF %>%
 corDF <- factAncDF %>% 
   group_by(reg, loop) %>% 
   summarize(
-    R = cor(up, down, use = "complete"),
-    p_val = cor.test(up, down)$p.value
+    R = cor(left, right, use = "complete"),
+    p_val = cor.test(left, right)$p.value
   )
 
-p = ggplot(factAncDF, aes(x = up, y = down, color = pos)) +
+p = ggplot(factAncDF, aes(x = left, y = right, color = pos)) +
   geom_point() +
   facet_grid(reg ~ loop, scales = "free") +
-  geom_text(aes(x = max(factAncDF$up, na.rm = TRUE), y = 1, 
+  geom_text(aes(x = max(factAncDF$left, na.rm = TRUE), y = 1, 
                 label = paste0("R=", round(R, 2))),
             data = corDF, color = "black",
             vjust = "inward", hjust = "inward", size = 7.5) +
@@ -414,16 +422,16 @@ p = ggplot(factAncDF, aes(x = up, y = down, color = pos)) +
         axis.title.y = element_text(face = "bold", color = COL_ANCHOR[2]),
         axis.text.y = element_text(face = "bold", color = COL_ANCHOR[2])
         ) + 
-  xlab("UP anchor coverage") + ylab("DOWN anchor coverage") + 
+  xlab("Left anchor ChIP-seq") + ylab("Right anchor ChIP-seq") + 
   scale_color_gradientn(colors = colorspace::rainbow_hcl(20))
 ggsave(p, file = paste0(outPrefix, ".6_random_pairs.cor.pdf"), w = 7, h = 7)
 
 subAncDF <- filter(factAncDF, reg == 1)
 
-p = ggplot(filter(subAncDF, reg == 1), aes(x = up, y = down, color = pos)) +
+p = ggplot(filter(subAncDF, reg == 1), aes(x = left, y = right, color = pos)) +
   geom_point() +
   facet_grid(reg ~ loop, scales = "free") +
-  geom_text(aes(x = max(subAncDF$up, na.rm = TRUE), y = 1, 
+  geom_text(aes(x = max(subAncDF$left, na.rm = TRUE), y = 1, 
                 label = paste0("R=", round(R, 2))),
             data = filter(corDF, reg == 1), color = "black",
             vjust = "inward", hjust = "inward", size = 7.5) +
@@ -433,7 +441,7 @@ p = ggplot(filter(subAncDF, reg == 1), aes(x = up, y = down, color = pos)) +
                      axis.title.y = element_text(face = "bold", color = COL_ANCHOR[2]),
                      axis.text.y = element_text(face = "bold", color = COL_ANCHOR[2]),
                      text = element_text(size = 20)) + 
-  xlab("UP anchor coverage") + ylab("DOWN anchor coverage") + 
+  xlab("Left anchor ChIP-seq") + ylab("Right anchor ChIP-seq") + 
   # scale_color_gradient2(low = "grey", mid = scales::muted("blue"), high = "gray")
   # scale_color_gradientn(colors = RColorBrewer::brewer.pal(3, "BrBG"))
   scale_color_gradientn(colors = colorspace::rainbow_hcl(20))
@@ -441,6 +449,15 @@ ggsave(p, file = paste0(outPrefix, ".2_random_pairs.cor.pdf"), w = 7, h = 3.5)
 
 
 #======================== Compare Correlation with Boxplot ==================
+# tidySub <- sample_n(tidyDF, 10000)
+
+pvalDF <- tidyDF %>% 
+  group_by(name) %>% 
+  do(w = wilcox.test(cor ~ loop, data = .)) %>% 
+  summarise(name, p_value = w$p.value) %>% 
+  mutate(
+    p_str = ifelse(p_value <= 10^-100, "p < 1e-100", signif(p_value, 2))
+  )
 
 p <- ggplot(tidyDF, aes(x = loop, y = cor)) +
   geom_violin(aes(fill = interaction(loop, name))) +
@@ -454,6 +471,7 @@ p <- ggplot(tidyDF, aes(x = loop, y = cor)) +
     legend.position = "none",
     axis.text.x = element_text(angle = 60, hjust = 1)) +
   labs(y = "ChIP-seq\n Correlation", x = "")
+
 ggsave(p, file = paste0(outPrefix, ".EDA.cor.by_TF_and_loop.violin.pdf"), w = 7, h = 3.5)
 
 
@@ -470,6 +488,13 @@ p <- ggplot(tidyDF, aes(x = loop, y = cor)) +
     axis.text.x = element_text(angle = 60, hjust = 1)) +
   labs(y = "ChIP-seq\n Correlation", x = "")
 ggsave(p, file = paste0(outPrefix, ".EDA.cor.by_TF_and_loop.violin_no-outlier.pdf"), w = 7, h = 3.5)
+ggsave(p, file = paste0(outPrefix, ".EDA.cor.by_TF_and_loop.violin_no-outlier_large.pdf"), w = 9, h = 4.2)
+
+# add p-values
+p <- p +  geom_text(aes(label = p_str), 
+                    data = pvalDF, y = 1.08, x = 1.5 , color = "black", size = 5) +
+  ylim(-1, 1.1)
+ggsave(p, file = paste0(outPrefix, ".EDA.cor.by_TF_and_loop.violin_no-outlier_with_p-value.pdf"), w = 7, h = 3.5)
 
 
 p <- ggplot(tidyDF, aes(x = loop, y = cor, fill = interaction(loop, name), color = interaction(loop, name))) +
