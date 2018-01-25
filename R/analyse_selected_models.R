@@ -312,7 +312,10 @@ aucDFmed <- aucDF %>%
     aucs_mean = mean(aucs, na.rm = TRUE),
     aucs_sd = sd(aucs, na.rm = TRUE)
   ) %>% 
-  ungroup() 
+  ungroup() %>% 
+  mutate(
+    curvetypes = factor(curvetypes, c("ROC", "PRC"))
+  )
 
 write_feather(aucDFmed, paste0(outPrefix, ".aucDFmed.feather"))
 # aucDFmed <- read_feather(paste0(outPrefix, ".aucDFmed.feather"))
@@ -323,14 +326,18 @@ write_feather(aucDFmed, paste0(outPrefix, ".aucDFmed.feather"))
 p <- ggplot(aucDFmed, aes(x = modnames, y = aucs_mean, fill = modnames)) +
   geom_bar(stat = "identity", position = "dodge") +
   geom_errorbar(aes(ymin = aucs_mean - aucs_sd, ymax = aucs_mean + aucs_sd),
-                width = .25, position = position_dodge(width = 1)) + 
-  geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), size = 3, vjust = 1.5) +
+                width = .25, position = position_dodge(width = 1)) +
+  geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), 
+            size = 5, hjust = 1.2, angle = 90) +
+  # geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), size = 3, vjust = 1.5) +
   facet_grid(curvetypes ~ ., scales = "free") +
   theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+        legend.position = "none",
+        text = element_text(size = 15)) +
   scale_fill_manual(values = designDF$color) +
   labs(x = "Models", y = "Prediction performance (AUC)")
-ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.barplot.pdf"), w = 3.5, h = 7)
+ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.barplot.pdf"), w = 5, h = 7)
 
 
 # Only AUC PRC as barplot
