@@ -341,7 +341,13 @@ TFspecific_ModelDF <- cvDF %>%
 
 write_tsv(TFspecific_ModelDF, paste0(outPrefix, ".TFspecific_ModelDF.tsv"))
 
-
+TFspecific_ModelDF_meta <- TFspecific_ModelDF %>% 
+  left_join(
+    select(meta, TF, file_accession = `File accession`),
+    by = "TF"
+  ) %>% 
+  select(TF, file_accession, everything()) %>% 
+  write_tsv(paste0(outPrefix, ".TFspecific_ModelDF_meta.tsv"))
 
 # take mean/meidan of estimates across TFs and folds
 allTfModelDF <- cvDF %>% 
