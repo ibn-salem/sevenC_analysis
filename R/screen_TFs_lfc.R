@@ -26,8 +26,6 @@ source("R/sevenC.functions.R")
 GI_LOCAL <- FALSE
 N_CORES = parallel::detectCores() - 2
 
-# MIN_MOTIF_SIG <- 6
-# MIN_MOTIF_SIG <- 5
 MOTIF_PVAL <- 2.5 * 1e-06
 WINDOW_SIZE <- 1000
 BIN_SIZE <- 1
@@ -35,22 +33,13 @@ K = 10  # K-fold corss validation
 N_TOP_MODELS = 10
 
 TRUE_LOOPS <- "HIC_ChIAPET"
-# TRUE_LOOPS <- "HIC_ChIAPET_CaptureC"
 
-# COL_TF = c(colorRampPalette(brewer.pal(8, "Set1"))(9), "#80da3a")
-# COL_TF = c(colorRampPalette(brewer.pal(12, "Set3"))(10), "gray70", "gray50", "gray30")
+# define colors for TFs
 COL_TF <- grDevices::colors()[str_detect(grDevices::colors(), "^((?!(gr(a|e)y|white)).)*[^\\d]$")]
-# COL_TF <- COL_TF[!COL_TF %in% c("white", "black", "aliceblue", "azure", "beige", "bisque", "cornsilk", "cyan", "darkorchid", "coral", "darkmagenta")]
-# pie(rep(1, length(COL_TF)), col = COL_TF, labels = COL_TF, main = length(COL_TF))
-# COL_TF = colorRamps::primary.colors(124)
 
 COL_LOOP = brewer.pal(8, "Dark2")[c(8,5)]
 names(COL_LOOP) <- c("No loop", "Loop")
 
-# outPrefix <- file.path("results", paste0("v04_screen_TF_lfc.", 
-#                                          paste0("motifSig", MIN_MOTIF_SIG), 
-#                                          "_w", WINDOW_SIZE, 
-#                                          "_b", BIN_SIZE))
 outPrefix <- file.path("results", paste0("v05_screen_TF_lfc.", 
                                          paste0("motifPval", MOTIF_PVAL), 
                                          "_w", WINDOW_SIZE, 
@@ -64,7 +53,6 @@ dataCandidatesPreifx <- file.path("results",
 
 
 # metadata file
-# metaFile <- "data/ENCODE/metadata.fltBam.tsv"
 metaFile <- "data/ENCODE/metadata.fcDF.tsv"
 
 SELECTED_TF <- c(
@@ -121,14 +109,12 @@ meta <- meta %>%
 COL_TF <- COL_TF[1:nrow(meta)]
 names(COL_TF) <- meta$TF
 COL_TF[match(SELECTED_TF, names(COL_TF))] <- COL_SELECTED_TF_2
-# meta <- meta[1:3, ]
 
 # Output table with accession numbers for all TFs ------------------------------
 access_table <- meta %>%
   select(TF, `Biosample term name`, `Output type`, `File accession`, `File download URL`, `Experiment accession`, everything()) %>% 
   select(-usedTF, -filePath, -file_nrep, -exp_nrep, -output_type) %>% 
   write_tsv(paste0(outPrefix, ".access_table.tsv"))
-
 
 # read preprocessed CTCF moitf pairs as candidates -----------------------------
 gi <- read_rds(paste0(dataCandidatesPreifx, ".gi.rds"))
@@ -172,11 +158,9 @@ if (!GI_LOCAL ) {
   gi <- read_rds(paste0(outPrefix, ".gi.rds"))
 }
 
-
 #-------------------------------------------------------------------------------
 # Analyse loopps --------------------------------------------------------
 #-------------------------------------------------------------------------------
-
 df <- as_tibble(as.data.frame(mcols(gi))) %>%
   mutate( id = 1:nrow(.)) %>% 
   select(id, loop, everything()) 
@@ -184,31 +168,9 @@ df <- as_tibble(as.data.frame(mcols(gi))) %>%
 write_feather(df, paste0(outPrefix, ".df.feather"))
 # df <- read_feather(paste0(outPrefix, ".df.feather"))
 
-#-------------------------------------------------------------------------------
-# split whole data set into EDA and prediction 
-#-------------------------------------------------------------------------------
-
-# randomly sample 10% of the data for EDA analysis
-# split_eda <- sample.int(nrow(df), 0.1 * nrow(df))
-# 
-# edaDF <- df[split_eda,]
-# modDF <- df[-split_eda,]
-# 
-# write_feather(edaDF, paste0(outPrefix, ".edaDF.feather"))
-# write_feather(modDF, paste0(outPrefix, ".modDF.feather"))
-# 
-# #remove all but 3 TF columns
-# rmNames <- paste0("cor_", meta$name[4:nrow(meta)])
-# df <- df %>%
-#   select(-match(rmNames, names(.)))
-
 #===============================================================================
 # Training and Cross-validation
 #===============================================================================
-
-# useTF <- meta$name
-#filter for a subset of TFS
-#
 
 # k fold cross validation with 1 repeats
 set.seed(3579)
@@ -413,10 +375,6 @@ modelDF <- modelDF %>%
 write_tsv(modelDF, paste0(outPrefix, ".modelDF.tsv"))
 # modelDF <- read_tsv(paste0(outPrefix, ".modelDF.tsv"))
 
-# # add meta data
-# modelDF <- modelDF %>% 
-#   left_join(meta, by = "name")
-
 paramByModel <- modelDF %>% 
   group_by(name, term) %>% 
   summarize(
@@ -531,10 +489,6 @@ write_feather(aucDF, paste0(outPrefix, "aucDF.feather"))
 # aucDF <- read_feather(paste0(outPrefix, "aucDF.feather"))
 # ranked_models <- read_rds(paste0(outPrefix, "ranked_models.rds"))
 
-# build color vector with TFs as names
-# COL_TF <- COL_TF[seq(1, length(ranked_models))]
-# names(COL_TF) <- ranked_models
-
 aucDFmed <- aucDF %>%
   group_by(name, pred_type, curvetypes) %>% 
   summarize(
@@ -543,9 +497,6 @@ aucDFmed <- aucDF %>%
     aucs_sd = sd(aucs, na.rm = TRUE)
   ) %>% 
   mutate(topN = factor(name %in% ranked_models[1:N_TOP_MODELS], c(TRUE, FALSE), c("top_n", "rest")))
-
-# aucDFmed <- aucDFmed %>%
-#   filter(name %in% ranked_models[1:6])
 
 #-------------------------------------------------------------------------------
 # barplot of AUCs of ROC and PRC
@@ -604,10 +555,6 @@ ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF_and_predType.boxplot.pdf"
 #-------------------------------------------------------------------------------
 # aucDF <- read_feather(paste0(outPrefix, "aucDF.feather"))
 
-# build color vector with TFs as names
-# COL_TF <- COL_TF[seq(1, length(ranked_models))]
-# names(COL_TF) <- ranked_models
-
 aucDFcombined <- aucDF %>%
   # take only the prediction value of the TF specific model
   filter(pred_type == "specificTF") %>% 
@@ -651,12 +598,9 @@ p <- ggplot(prcDF, aes(x = name, y = aucs_mean,
 
 ggsave(p, file = paste0(outPrefix, ".AUC_PRC.by_TF.barplot.pdf"), w = 14, h = 3.5)
 
-
-
 #-------------------------------------------------------------------------------
 # Binary prediction
 #-------------------------------------------------------------------------------
-
 evalDF <- cvDF %>%
   ungroup() %>% 
   select(name, id, pred_allTF, label) %>%
@@ -688,10 +632,6 @@ perfObj <- ROCR::performance(predObj, measure = "f")
 cutoff_List <- slot(perfObj, "x.values")
 f1_List <- slot(perfObj, "y.values")
 
-# # plot f1-score vs. cutoffs
-# pdf(paste0(outPrefix, ".selectedTF.pred_allTF.f1-score_vs_cutoff.pdf"))
-#   plot(performance(predObj, measure = "f"), col = brewer.pal(nrow(evalDF), "Dark2"))
-# dev.off()
 
 # plot f1-score vs. cutoffs using ggplot2
 f1DF <- tibble(
@@ -703,15 +643,6 @@ f1DF <- tibble(
 write_feather(f1DF, paste0(outPrefix, ".f1DF.feather"))
 # f1DF <- read_feather(paste0(outPrefix, ".f1DF.feather"))
 
-# p <- f1DF %>% 
-#   filter(TF %in% SELECTED_TF) %>% 
-#   ggplot(aes(x = cutoff, y = f1_score, color = TF)) +
-#   geom_line() +
-#   theme_bw() + theme(legend.position = "right") +
-#   scale_color_manual(values = COL_SELECTED_TF_2)
-# 
-# ggsave(p, file = paste0(outPrefix, ".allTF.pred_specificTF.f1-score_vs_cutoff.selectedTF.pdf"), w = 5, h = 5)
-
 # plot curve only for selected TFs
 p <- ggplot(filter(f1DF, TF %in% SELECTED_TF), aes(x = cutoff, y = f1_score, color = TF)) +
   geom_line() +
@@ -722,7 +653,6 @@ ggsave(p, file = paste0(outPrefix, ".selectedTF.pred_allTF.f1-score_vs_cutoff.pd
 #-------------------------------------------------------------------------------
 # get cutoff with maximal f1-score
 #-------------------------------------------------------------------------------
-
 f1ModelDF <- predDF %>% 
   mutate(
     cutoffs = cutoff_List,

@@ -147,7 +147,6 @@ mkdir -p ENCODE/Experiments
 cd ENCODE/Experiments 
 
 xargs -P 10 -n 1 curl -O -L < ../URLs.fltOuttype.txt
-xargs -P 10 -n 1 curl -O -L < ../URLs.fltBam.txt
 
 cd ../..
 

@@ -52,19 +52,13 @@ SELECTED_TF <- c(
   "EP300",
   "POLR2A"
 )
-# COL_SELECTED_TF_1 = brewer.pal(12, "Paired")[c(1, 3, 5, 7, 9, 11)]
+
 COL_SELECTED_TF_2 = brewer.pal(12, "Paired")[c(2, 4, 6, 8, 10, 12)]
 names(COL_SELECTED_TF_2) <- SELECTED_TF
 
 # define colors for TFs  -------------------------------------------------------
-# COL_SELECTED_TF_1
-#barplot(1:length(COL_TF), col = COL_TF, names.arg = names(COL_TF))
-# barplot(1:length(COL_SELECTED_TF_1), col = COL_SELECTED_TF_1, names.arg = names(COL_SELECTED_TF_1))
 COL_DATA <- c(COL_SELECTED_TF_2, "#80B1D3", "#E5C494", "#E78AC3")
 names(COL_DATA) <- c(names(COL_SELECTED_TF_2), "SMC3", "input", "DNase-seq")
-# barplot(1:length(COL_DATA), col = COL_DATA, names.arg = names(COL_DATA))
-# pie(rep(1, length(COL_DATA)), labels = names(COL_DATA), col = COL_DATA)
-
 
 #*******************************************************************************
 # Performance Evaluation -------------------------------------------------------
@@ -158,8 +152,7 @@ subDF <- aucDFmed %>%
   mutate(
     plot_name = ifelse(!is.na(TF), TF, modnames),
     data_type = factor(data_type, c("ChIP-seq", "DNase-seq", "ChIP-nexus")),
-    output_type = factor(output_type, c("fold change over control", "shifted_reads", "qfraq", "input", "signal")),
-    # TF = factor(TF, levels = c(SELECTED_TF, "Dist", "Orientation", "Motif", "Dist+Orientation+Motif"))
+    output_type = factor(output_type, c("fold change over control", "shifted_reads", "qfraq", "input", "signal"))
   )
 
 p <- ggplot(subDF, aes(x = plot_name, y = aucs_mean, fill = TF)) +

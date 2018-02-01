@@ -11,7 +11,6 @@ library(feather)      # for efficient storing of data.frames
 GI_LOCAL <- FALSE
 N_CORES = min(10, parallel::detectCores() - 1)
 
-# MIN_MOTIF_SIG <- 5
 MOTIF_PVAL <- 2.5 * 1e-06
 WINDOW_SIZE <- 1000
 BIN_SIZE <- 1
@@ -58,13 +57,11 @@ p <- ggplot(tidySubDF, aes(x = loop, y = cor)) +
     legend.position = "none",
     axis.text.x = element_text(angle = 60, hjust = 1)) + 
   labs(y = "Correlation of ChIP-seq signal", x = "")
-# geom_text(data=pvalDF, aes(label=paste0("p=", signif(p,3)), x=1.5, y=1.1), size=5)
-# p
+
 ggsave(p, file = paste0(outPrefix, ".cor.by_name_and_loop.boxplot.pdf"), w = 14, h = 7)
 
 
 #======================== Compare Correlation with Boxplot ==================
-
 p <- ggplot(tidyDF, aes(x = loop, y = cor)) +
   geom_violin(aes(fill = interaction(loop, name))) + 
   geom_boxplot(fill = "white", width = .2) +
@@ -77,10 +74,8 @@ p <- ggplot(tidyDF, aes(x = loop, y = cor)) +
     legend.position = "none",
     axis.text.x = element_text(angle = 60, hjust = 1)) + 
   labs(y = "ChIP-seq\n Correlation", x = "")
-# geom_text(data=pvalDF, aes(label=paste0("p=", signif(p,3)), x=1.5, y=1.1), size=5)
-# p
-ggsave(p, file = paste0(outPrefix, ".EDA.cor.by_TF_and_loop.violin.pdf"), w = 7, h = 3.5)
 
+ggsave(p, file = paste0(outPrefix, ".EDA.cor.by_TF_and_loop.violin.pdf"), w = 7, h = 3.5)
 
 p <- ggplot(tidyDF, aes(x = name, y = cor, col = loop)) +
   geom_boxplot() +

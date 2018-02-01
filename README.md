@@ -20,8 +20,8 @@ More details on using the sevenC R package itself can be found on the [sevenC we
 1. [loop_freaters_EDA.R](R/loop_freaters_EDA.R)
 1. [analyse_HeLa.R](R/analyse_HeLa.R)
 1. [analyse_input_data_types.R](R/analyse_input_data_types.R)
-    - [analyse_input_data_types_performance.R](R/analyse_input_data_performance_types.R)
-    - [analyse_input_data_types_features.R](R/analyse_input_data_features.R)
+    - [analyse_input_data_types_performance.R](R/analyse_input_data_types_performance.R)
+    - [analyse_input_data_types_features.R](R/analyse_input_data_types_features.R)
 
 ## Download external data
 

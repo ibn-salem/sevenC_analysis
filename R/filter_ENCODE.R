@@ -18,13 +18,9 @@ useTFs <- c(
   "POLR2A"
 )
 
-# "NFKB",
-# "NFYB",
-
 #-------------------------------------------------------------------------------
 # parse meta data and filter
 #-------------------------------------------------------------------------------
-
 metaDataFile <- "data/ENCODE/metadata.tsv"
 reportFile <- "data/ENCODE/report.tsv"
 
@@ -120,74 +116,9 @@ p <- df %>%
 ggsave(str_c(outPrefix, ".size_by_outputType_and_nrep.boxplot.pdf"))
 
 
-# Filter for used data sets -----------------------------------------------
-# df %>% 
-#   filter(`Output type` %in% c("signal")) %>%
-#   distinct(TF) %>%
-#   summarize(
-#     nUsed = sum(TF %in% useTFs),
-#     percentUsed = nUsed / length(useTFs) * 100,
-#     n = n()
-#   )
-# 
-
-  # # filter(`Biological replicate(s)` == "1" | is.na(rep)) %>% 
-  # # filter(map_lgl(rep, setequal, 1:2) | is.na(rep)) %>% 
-  # filter(file_nrep == 2 | `Output type` == "raw signal") %>% 
-  # distinct(`Output type`, TF, .keep_all = TRUE) %>%
-  # mutate(usedTF = TF %in% useTFs) %>%
-  # arrange(desc(usedTF), desc(`Output type`)) %>%
-  # mutate(filePath = file.path("data", "ENCODE", "Experiments", basename(`File download URL`)))
-  # 
-
-  
-# filter for "signal" as output with combined replicate (is NA here) and only GM12878 cell line
-
-flt <- df %>% 
-  filter(`Output type` %in% c("raw signal", "fold change over control")) %>%
-  # filter(`Biological replicate(s)` == "1" | is.na(rep)) %>% 
-  # filter(map_lgl(rep, setequal, 1:2) | is.na(rep)) %>% 
-  filter(file_nrep == 2 | `Output type` == "raw signal") %>% 
-  filter(`Biosample term name` == "GM12878") %>%
-  distinct(`Output type`, TF, .keep_all = TRUE) %>%
-  mutate(usedTF = TF %in% useTFs) %>%
-  arrange(desc(usedTF), desc(`Output type`)) %>%
-  mutate(filePath = file.path("data", "ENCODE", "Experiments", basename(`File download URL`)))
-  
-# get size of files
-sizeDF <- flt %>%
-  group_by(`Output type`) %>%
-  summarize(
-    n = n(),
-    total_size = sum(size) / 1024,
-    mean_size = mean(size)
-  )
-
-usedFlt <- flt %>%
-  filter(usedTF)
-
-# Output filtered URL list and metadata table -----------------------------
-
-flt %>% 
-  select(`File download URL`) %>%
-  write_tsv(
-    path = file.path("data", "ENCODE", "URLs.flt.txt"),
-    col_names = FALSE)
-
-flt %>%
-  select(-rep) %>%
-  write_tsv(path = file.path("data", "ENCODE", "metadata.flt.tsv"))
-
-
 # Filter for Output tpye tests -------------------------------------------------
 
 fltOuttype <- df %>% 
-  # filter(`Output type` %in% c("raw signal", "fold change over control")) %>%
-  # filter(`Biological replicate(s)` == "1" | is.na(rep)) %>% 
-  # filter(map_lgl(rep, setequal, 1:2) | is.na(rep)) %>% 
-  # filter(file_nrep == 2 | `Output type` == "raw signal") %>% 
-  # filter(rep == "1" | is.na(rep)) %>%
-  # filter(`Biosample term name` == "GM12878") %>%
   arrange(date) %>% 
   filter(TF %in% c("CTCF", "REST", "STAT1", "RAD21")) %>%
   distinct(`Output type`, TF, .keep_all = TRUE) %>%
@@ -241,8 +172,6 @@ fcDF %>%
     path = file.path("data", "ENCODE", "URLs.fcDF_selectedTF.txt"),
     col_names = FALSE)
 
-
-
 #-------------------------------------------------------------------------------
 # HeLa fold-change data
 #-------------------------------------------------------------------------------
@@ -276,71 +205,4 @@ fcHelaDFselected %>%
   write_tsv(
     path = file.path("data", "ENCODE", "URLs.fc_HELA_selected.txt"),
     col_names = FALSE)
-
-
-
-#-------------------------------------------------------------------------------
-# get BAM files
-#-------------------------------------------------------------------------------
-
-dfBam <- meta %>%
-  filter(`File format` == "bam") %>% 
-  filter(`Output type` == "alignments") %>% 
-  filter(Assembly == "hg19") %>% 
-  filter(`Biosample term name` == "GM12878")
-
-# filter for "signal" as output with combined replicate (is NA here) and only GM12878 cell line
-
-fltBam <- dfBam %>% 
-  filter(`Biosample term name` == "GM12878") %>%
-  distinct(TF, .keep_all = TRUE) %>%
-  mutate(usedTF = TF %in% useTFs) %>%
-  arrange(desc(usedTF)) %>%
-  mutate(filePath = file.path("data", "ENCODE", "Experiments", basename(`File download URL`)))
-
-
-# Output filtered URL list and metadata table -----------------------------
-fltBam %>% 
-  select(`File download URL`) %>%
-  write_tsv(
-    path = file.path("data", "ENCODE", "URLs.fltBam.txt"),
-    col_names = FALSE)
-
-fltBam %>%
-  select(-rep) %>%
-  write_tsv(path = file.path("data", "ENCODE", "metadata.fltBam.tsv"))
-
-#===============================================================================
-
-# sDF <- df %>% 
-#   filter(`Output type` %in% c("signal")) %>%
-#   # filter(`Biological replicate(s)` == "1, 2") %>%
-#   # filter(map_lgl(rep, setequal, 1:2) | is.na(rep)) %>% 
-#   # filter(file_nrep == 2 | `Output type` == "raw signal") %>% 
-#   # filter(rep == "1" | is.na(rep)) %>%
-#   # filter(`Biosample term name` == "GM12878") %>%
-#   # filter(TF %in% c("CTCF", "REST", "STAT1")) %>%
-#   mutate(usedTF = TF %in% useTFs) %>%
-#   arrange(desc(TF), desc(`Output type`), desc(date)) %>%
-#   distinct(`Output type`, TF, .keep_all = TRUE) %>%
-#   mutate(filePath = file.path("data", "ENCODE", "Experiments", basename(`File download URL`))) %>% 
-#   select(1:9, usedTF, filePath, everything())
-
-
-
-#-------------------------------------------------------------------------------
-# download files
-#-------------------------------------------------------------------------------
-# dir.create(file.path("data", "ENCODE", "Experiments"), showWarnings = FALSE)
-# 
-# # iterate over files and download each
-# # for (i in seq_along(flt$filePath)) {
-# for (i in 1:2) {
-#     
-#   message("INFO: Downloading from: ", flt$`File download URL`[i])
-#   
-#   download.file(flt$`File download URL`[i], flt$filePath[i], mode = "wb")  
-# 
-# }
-
 

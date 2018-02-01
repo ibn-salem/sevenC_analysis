@@ -11,9 +11,6 @@ require(feather)      # for efficient storing of data.frames
 
 # 0) Set parameter --------------------------------------------------------
 
-# use previously saved gi object?
-
-# MIN_MOTIF_SIG <- 5
 MOTIF_PVAL <- 2.5 * 1e-06
 WINDOW_SIZE <- 1000
 BIN_SIZE <- 1
@@ -24,10 +21,6 @@ dataCandidatesPreifx <- file.path("results",
 COL_LOOP = brewer.pal(8, "Dark2")[c(8,5)] #[c(2,1,5,6)]
 names(COL_LOOP) <- c("No loop", "Loop")
 
-# outPrefix <- file.path("results", paste0("v05_selected_models.", 
-#                                          paste0("motifSig", MIN_MOTIF_SIG), 
-#                                          "_w", WINDOW_SIZE, 
-#                                          "_b", BIN_SIZE))
 outPrefix <- file.path("results", paste0("v05_selected_models.", 
                                          paste0("motifPval", MOTIF_PVAL), 
                                          "_w", WINDOW_SIZE, 
@@ -47,14 +40,13 @@ SELECTED_TF <- c(
   "POLR2A"
 )
 
-# COL_SELECTED_TF = brewer.pal(length(SELECTED_TF), "Set1")
 COL_SELECTED_TF = brewer.pal(12, "Paired")
 COL_SELECTED_TF_1 = brewer.pal(12, "Paired")[c(1, 3, 5, 7, 9, 11)]
 COL_SELECTED_TF_2 = brewer.pal(12, "Paired")[c(2, 4, 6, 8, 10, 12)]
 
 COL_ANCHOR = brewer.pal(12, "Paired")[c(6,2)] #[c(2,6)] #[c(2,1,5,6)]
 
-#-------------------------------Parse and filter input ChiP-seq data  
+#-------------Parse and filter input ChiP-seq data  ----------------------------
 
 # parse ucscMeta file
 meta <- read_tsv(metaFile,
@@ -78,11 +70,7 @@ meta <- meta %>%
   select(TF, name, filePath, everything())
 
 
-# ----------------load main data set with loops and features
-# write_feather(df, paste0(outPrefix, ".df.feather"))
-# df <- read_feather(paste0(outPrefix, ".df.feather"))
-# write_feather(edaDF, paste0(outPrefix, ".edaDF.feather"))
-
+# ----------------load main data set with loops and features -------------------
 df <- read_feather(paste0(outPrefix, ".df.feather"))
 
 # make a tidy DF
@@ -91,13 +79,8 @@ tidyDF <- df %>%
   mutate(name = str_sub(name, 5)) %>% 
   mutate(name = factor(name, SELECTED_TF))
 
-# tidySeltDF <- tidyDF %>% 
-#   filter(name %in% SELECTED_TF)
-
 # load GInteractions object
 gi <- read_rds(paste0(outPrefix, ".gi.rds"))
-
-
 
 #*******************************************************************************
 # Compaire motifs from RSAT and JASPAR ----
@@ -119,7 +102,6 @@ p <- ggplot(motif_counts, aes(x = type, y = count)) +
   geom_bar(stat = "identity") + 
   geom_text(aes(label = count), vjust = "bottom")
 ggsave(paste0(outPrefix, ".motif_overlap_JASPAR_RSAT.barplot.pdf"), w = 3, h = 3)
-# -------------------
 
 #======================== Percent positives  ==================
 
@@ -131,78 +113,11 @@ countsDF <- tibble(
   HiC_percent = HiC / nPairs * 100, 
   HIC_ChIAPET = sum(df$Loop_Tang2015_GM12878 == "Loop" | df$Loop_Rao_GM12878 == "Loop"),
   HIC_ChIAPET_percent = HIC_ChIAPET / nPairs * 100,
-  # HIC_ChIAPET_CaptureC = sum(df$HIC_ChIAPET_CaptureC == "Loop"),
-  # HIC_ChIAPET_CaptureC_percent = HIC_ChIAPET_CaptureC / nPairs * 100
   loop = sum(df$loop == "Loop"),
   loop_percent = loop / nPairs * 100,
 )
 
 write_tsv(countsDF, path = paste0(outPrefix, ".positives.countsDF.tsv"))
-
-# vennList <- map(
-#   select(df, starts_with("Loop_")),
-#   function(x) which(x == "Loop")
-# )
-
-
-# #--------- VennDiagram of loops -----------------------------------
-# require(VennDiagram)# for VennDiagrams
-# venn.diagram(
-#   x = vennList, 
-#   filename = paste0(outPrefix, ".loop_balance.venn.png"),
-#   imagetype = "png",
-#   euler.d = TRUE, scaled = TRUE
-# )
-# 
-# require(venneuler)  # for Venn-Euler diagram (area propotional)
-# 
-# vennMat <- df %>% 
-#   select(starts_with("Loop_")) %>% 
-#   mutate_all( function(x) x == "Loop")
-# 
-# pdf(paste0(outPrefix, ".loop_balance.venneuler.pdf"))
-# plot(venneuler(vennMat))
-# dev.off()
-
-
-# Venn-Diagram of ChIA-PET and Hi-C loops --------------------------------------
-
-# vennList <- map(
-#   select(df, Loop_Rao_GM12878, Loop_Tang2015_GM12878_CTCF, Loop_Tang2015_GM12878_PolII),
-#   function(x) which(x == "Loop")
-# )
-# names(vennList) <- c("Hi-C", "CTCF ChIA-PET", "PolII ChIA-PET")
-# 
-# venn.diagram(
-#   x = vennList, 
-#   filename = paste0(outPrefix, ".loop_balance.Hi-C_ChIA-PET.venn.png"),
-#   imagetype = "png",
-#   euler.d = TRUE, scaled = TRUE,
-#   lwd = 6,
-#   lty = 'blank',
-#   fill = c("cornflowerblue", "green", "yellow"),
-#   cex = 2,
-#   fontface = "bold",
-#   fontfamily = "sans",
-#   cat.cex = 2.5,
-#   cat.fontface = "bold",
-#   cat.default.pos = "outer",
-#   cat.pos = c(-27, 27, 135),
-#   cat.dist = c(0.055, 0.055, 0.085),
-#   cat.fontfamily = "sans",
-#   rotation = 1,
-#   cat.just = list(c(0.6,1) , c(.7,1.2) , c(1,0))
-# )
-
-# vennMat <- df %>% 
-#   select(Loop_Rao_GM12878, Loop_Tang2015_GM12878_CTCF, Loop_Tang2015_GM12878_PolII) %>% 
-#   mutate_all( function(x) x == "Loop")
-# names(vennMat) <- c("Hi-C", "CTCF ChIA-PET", "PolII ChIA-PET")
-# 
-# pdf(paste0(outPrefix, ".loop_balance.Hi-C_ChIA-PET.venneuler.pdf"))
-# plot(venneuler(vennMat))
-# dev.off()
-
 
 # ---------------- Pie chart of percent positives ---------------------
 nDF <- df %>% 
@@ -236,10 +151,6 @@ ggsave(p, file = paste0(outPrefix, ".loop_balance.pie.pdf"), w = 6, h = 6)
 
 
 #======================== distance of looping and non looping pairs  ======
-
-
-# plotDF <- melt(loopDF, id=c("IDg1","IDg1", "dist"), measure.vars=LOOP_COL_ALL)
-
 p <- ggplot(df, aes(dist/10^3, fill = loop, color = loop)) +
   geom_density(size = 2, alpha = 0.5) +
   # facet_grid(variable ~ .) + 
@@ -250,9 +161,7 @@ p <- ggplot(df, aes(dist/10^3, fill = loop, color = loop)) +
 ggsave(p, file = paste0(outPrefix, ".distance_by_loop.density.pdf"), w = 7, h = 3.5)
 ggsave(p, file = paste0(outPrefix, ".distance_by_loop.density_small.pdf"), w = 3, h = 1.4)
 
-
 #======================== Motif orientation ======================
-
 oreientationDF <- df %>%
   group_by(loop, strandOrientation) %>%
   summarise(
@@ -270,7 +179,6 @@ p <- ggplot(oreientationDF,
 ggsave(paste0(outPrefix, "orientation.n_by_orientation_and_loop.barplot.pdf"),
        w = 6, h = 6)
 
-
 p <- ggplot(oreientationDF, 
             aes(x = loop, y = percent, fill = loop, color = loop)) + 
   geom_bar(stat = "identity", color = "black") +
@@ -285,7 +193,6 @@ p <- ggplot(oreientationDF,
 ggsave(paste0(outPrefix, "orientation_by_loop.percent.barplot.pdf"),
        w = 6, h = 3.5)
 
-
 #======================== Motif score by loop ==================================
 p <- ggplot(df, aes(x = score_min, fill = loop, color = loop)) +
   geom_density(size = 2, alpha = 0.5) +
@@ -298,7 +205,6 @@ p
 ggsave(p, file = paste0(outPrefix, ".motif_score_by_loop.density.pdf"), w = 7, h = 3.5)
 
 ancLoop <- unlist(anchors(gi[df$loop == "Loop"], id = TRUE))
-# motif_sig <- mcols(regions(gi))[, "sig"]
 motif_sig <- mcols(regions(gi))[, "score"]
 motifDF <- tibble(
   motif_sig = motif_sig,
@@ -315,11 +221,9 @@ p <- ggplot(motifDF, aes(x = motif_sig, fill = loop, color = loop)) +
 ggsave(p, file = paste0(outPrefix, ".anchor_motif_score_by_loop.density.pdf"), w = 7, h = 3.5)
 
 # ====================  Plot ChIP-seq coverage at anchors ======================
-# get list of coverage for all anchors
-
 FACT = "ZNF143"
 N_EXAMPLE = 3
-# covList <- mcols(regions(gi))[, paste0("cov_", FACT)]
+
 covList <- mcols(regions(gi))[, FACT]
 
 # get randomly three loop and three non-loping pairs
@@ -331,19 +235,7 @@ bothNoSupport <- gi$Loop_Rao_GM12878  != "Loop" & gi$Loop_Tang2015_GM12878 != "L
 #   sample(which(bothNoSupport), N_EXAMPLE)
 # )
 
-# rand_examples = c(
-#   379220, 357242, 16818,
-#   163948, 69243, 214045, 
-# )
 
-# # fix to selected examples
-# rand_examples = c(
-#   346768, 362508, 26601, 84646 (non-centered)
-#   71035 , 247338, 173202
-# )
-
-# good loop: 89052 195813 254449
-# good no-loop: 947 (no signal)
 # fix to selected examples
 rand_examples = c(
   89052, 362508, 84646,
@@ -442,11 +334,8 @@ p = ggplot(filter(subAncDF, reg == 1), aes(x = left, y = right, color = pos)) +
                      axis.text.y = element_text(face = "bold", color = COL_ANCHOR[2]),
                      text = element_text(size = 20)) + 
   xlab("Left anchor ChIP-seq") + ylab("Right anchor ChIP-seq") + 
-  # scale_color_gradient2(low = "grey", mid = scales::muted("blue"), high = "gray")
-  # scale_color_gradientn(colors = RColorBrewer::brewer.pal(3, "BrBG"))
   scale_color_gradientn(colors = colorspace::rainbow_hcl(20))
 ggsave(p, file = paste0(outPrefix, ".2_random_pairs.cor.pdf"), w = 7, h = 3.5)
-
 
 #======================== Compare Correlation with Boxplot ==================
 # tidySub <- sample_n(tidyDF, 10000)
@@ -496,10 +385,7 @@ p <- p +  geom_text(aes(label = p_str),
   ylim(-1, 1.1)
 ggsave(p, file = paste0(outPrefix, ".EDA.cor.by_TF_and_loop.violin_no-outlier_with_p-value.pdf"), w = 7, h = 3.5)
 
-
 p <- ggplot(tidyDF, aes(x = loop, y = cor, fill = interaction(loop, name), color = interaction(loop, name))) +
-  # geom_violin(aes(fill = interaction(loop, name))) + 
-  # geom_boxplot(fill = "white", width = .2) +
   geom_violin(color = NA, adjust = 0.25, alpha = 0.5) +
   geom_boxplot(fill = "white", outlier.shape = NA, width = 0.2) + 
   facet_grid(. ~ name) + 
@@ -512,11 +398,8 @@ p <- ggplot(tidyDF, aes(x = loop, y = cor, fill = interaction(loop, name), color
     legend.position = "none",
     axis.text.x = element_text(angle = 60, hjust = 1)) + 
   labs(y = "ChIP-seq\n Correlation", x = "")
-# geom_text(data=pvalDF, aes(label=paste0("p=", signif(p,3)), x=1.5, y=1.1), size=5)
-# p
 
 ggsave(p, file = paste0(outPrefix, ".EDA.cor.by_TF_and_loop.violin_color.pdf"), w = 7, h = 3.5)
-
 
 p <- ggplot(tidyDF, aes(x = name, y = cor, col = loop)) +
   geom_boxplot() +
@@ -530,11 +413,9 @@ p <- ggplot(tidyDF, aes(x = name, y = cor, col = loop)) +
   labs(y = "ChIP-seq\n Correlation", x = "")
 ggsave(p, file = paste0(outPrefix, ".EDA.cor.by_TF_and_loop.boxplot.pdf"), w = 7, h = 3.5)
 
-
 #*******************************************************************************
 # Compare dist vs. log10(dist) in prediction ----------
 #*******************************************************************************
-
 df$dist_log10 <- log10(df$dist)
 
 formula_list <- list(

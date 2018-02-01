@@ -30,7 +30,6 @@ LoopTang2015_GM12878_Files <- c(
   "data/Tang2015/GSM1872887_GM12878_RNAPII_PET_clusters.txt")
 
 # define data candidate path
-# define data candidate path
 dataCandidatesPreifx <- file.path("results", 
                                   paste0("CTCF_JASPAR.v01.pval_", MOTIF_PVAL))
 

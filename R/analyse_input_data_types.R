@@ -43,16 +43,6 @@ dir.create(dirname(outPrefix), showWarnings = FALSE)
 
 DATA_TYPES_META_FILE = "data/DATA_TYPES_metadata.tsv"
 
-# setup cluster ----------------------------------------------------------------
-
-# # partion data for parallel processing
-# cluster <- create_cluster(N_CORES) %>%
-#   cluster_library(packages = c("sevenC", "tidyverse"))
-# 
-# # evaluate help function code on each cluster
-# cluster_eval(cluster, source("R/sevenC.functions.R"))
-
-
 # Parse and filter meta data  --------------------------------------------------
 
 meta <- read_tsv(DATA_TYPES_META_FILE, col_types = cols(
@@ -176,14 +166,9 @@ cvDF <- tidyCV %>%
   mutate(id = parse_integer(str_replace(Fold, "^Fold", "")))
 
 
-# # copy object to each cluster node
-# cluster <- cluster %>%
-#   cluster_copy(tidyCV) %>%
-#   cluster_copy(df)
 
-# partition data set to clusters
+# group data set to clusters
 cvDF <- cvDF %>% 
-  # partition(name, Fold, cluster = cluster) %>%
   group_by(name, Fold) %>%
   # fit model on training part
   # fit model and save estimates in tidy format
@@ -200,20 +185,7 @@ cvDF <- cvDF %>%
     ),
     label = map(map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), "loop")
   ) %>% 
-  # collect results from cluster
-  # collect() %>%
-  # ungroup
   ungroup()
 
 write_rds(cvDF, path = paste0(outPrefix, "cvDF.rds"))
-# cvDF <- read_rds(paste0(outPrefix, "cvDF.rds"))
-
-# gi <- read_rds(paste0(outPrefix, ".gi.rds"))
-# df <- read_feather(paste0(outPrefix, ".df.feather"))
-# tidyCV <- read_feather(paste0(outPrefix, ".tidyCV.feather"))
-# cvDF <- read_rds(paste0(outPrefix, "cvDF.rds"))
-# designDF <- read_rds(paste0(outPrefix, "designDF.rds"))
-#===============================================================================
-# Performance Evaluation
-#===============================================================================
 

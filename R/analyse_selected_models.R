@@ -24,7 +24,6 @@ source("R/sevenC.functions.R")
 GI_LOCAL <- FALSE
 N_CORES = min(10, parallel::detectCores() - 1)
 
-# MIN_MOTIF_SIG <- 5
 MOTIF_PVAL <- 2.5 * 1e-06
 WINDOW_SIZE <- 1000
 BIN_SIZE <- 1
@@ -43,22 +42,10 @@ dir.create(dirname(outPrefix), showWarnings = FALSE)
 dataCandidatesPreifx <- file.path("results", 
                                   paste0("CTCF_JASPAR.v01.pval_", MOTIF_PVAL))
 
-# v05_screen_TF_lfc.motifPval2.5e-06_w1000_b1
 screenPrefix <- file.path("results", paste0("v05_screen_TF_lfc.", 
                                             paste0("motifPval", MOTIF_PVAL), 
                                             "_w", WINDOW_SIZE, 
                                             "_b", BIN_SIZE))
-
-
-# True loops in GM12878 from Rao et al:
-LoopRao2014_GM12878_File <- 
-  "data/Rao2014/GSE63525_GM12878_primary+replicate_HiCCUPS_looplist_with_motifs.txt"
-
-# ChIA-PET loops in GM12878 from Tang et al 2015:
-LoopTang2015_GM12878_Files <- c(
-  "data/Tang2015/GSM1872886_GM12878_CTCF_PET_clusters.txt",
-  "data/Tang2015/GSM1872887_GM12878_RNAPII_PET_clusters.txt")
-
 
 # metadata file
 metaFile <- "data/ENCODE/metadata.fcDF.tsv"
@@ -77,18 +64,6 @@ COL_SELECTED_TF_1 = brewer.pal(12, "Paired")[c(1, 3, 5, 7, 9, 11)]
 COL_SELECTED_TF_2 = brewer.pal(12, "Paired")[c(2, 4, 6, 8, 10, 12)]
 names(COL_SELECTED_TF_1) <- SELECTED_TF
 names(COL_SELECTED_TF_2) <- SELECTED_TF
-
-#-------------------------------------------------------------------------------
-# setup cluster
-#-------------------------------------------------------------------------------
-
-# partion data for parallel processing
-cluster <- create_cluster(N_CORES) %>%
-  cluster_library(packages = c("sevenC", "tidyverse"))
-
-# evaluate help function code on each cluster
-cluster_eval(cluster, source("R/sevenC.functions.R"))
-
 
 #-------------------------------------------------------------------------------
 # Parse and filter input ChiP-seq data  -----------------------------------
@@ -141,11 +116,6 @@ if (!GI_LOCAL ) {
       meta$name[[i]],
     )
     
-    # source("R/old_code.R")
-    # regions(gi) <- addCovToGR_OLD(regions(gi), meta$filePath[[i]], colname = meta$name[[i]])
-    # regions(gi) <- addCovToGR(regions(gi), meta$filePath[[i]], colname = meta$name[[i]])
-    # regions(gi) <- addCovToGR_asGR(regions(gi), meta$filePath[[i]], colname = meta$name[[i]])
-    # gi <- addCovCor(gi, datacol = meta$name[[i]], colname = paste0("cor_", meta$name[[i]]))
   }  
   # Annotae with correlation across TFs -------------------------------------
   
@@ -228,8 +198,6 @@ designDF <- tibble(
 
 write_rds(designDF, paste0(outPrefix, "designDF.rds"))
 
-# pie(rep(1, nrow(designDF)), col = designDF$color, labels = designDF$name)
-
 # expand data.frame to have all combinations of model and split
 cvDF <- tidyCV %>% 
   distinct(Fold) %>% 
@@ -238,15 +206,8 @@ cvDF <- tidyCV %>%
   left_join(designDF, by = "name") %>% 
   mutate(id = parse_integer(str_replace(Fold, "^Fold", "")))
 
-
-# copy object to each cluster node
-# cluster <- cluster %>% 
-#   cluster_copy(tidyCV) %>% 
-#   cluster_copy(df)
-
 # partition data set to clusters
 cvDF <- cvDF %>% 
-  # partition(name, Fold, cluster = cluster) %>%
   group_by(name, Fold) %>% 
   # fit model on training part
   # fit model and save estimates in tidy format
@@ -263,9 +224,6 @@ cvDF <- cvDF %>%
     ),
     label = map(map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), "loop")
   ) %>% 
-  # collect results from cluster
-  # collect() %>% 
-  # ungroup
   ungroup()
 
 write_rds(cvDF, path = paste0(outPrefix, "cvDF.rds"))
@@ -354,7 +312,7 @@ p <- ggplot(filter(aucDFmed, curvetypes == "PRC"),
         text = element_text(size = 15)) +
   scale_fill_manual(values = designDF$color) +
   labs(x = "Models", y = "Prediction performance\n(auPRC)")
-# p
+
 ggsave(p, file = paste0(outPrefix, ".AUC_PRC.barplot.pdf"), w = 3.5, h = 5)
 
 
@@ -370,7 +328,7 @@ subsetList = list(
   all = designDF$name
 )
 
-for (subStr in names(subsetList)){
+for (subStr in names(subsetList)) {
   
   aucDFmedSub <- aucDFmed %>% 
     filter(modnames %in% subsetList[[subStr]])
@@ -381,7 +339,6 @@ for (subStr in names(subsetList)){
   
   aucDFroc <- aucDFmedSub %>% 
     filter(curvetypes == "ROC")
-  
   
   rocDF <- curveDF %>% 
     filter(type == "ROC")
@@ -420,14 +377,13 @@ for (subStr in names(subsetList)){
   g <- ggplot(prcDF, aes(x = x, y = y, color = modname)) +
     geom_line() +
     geom_abline(intercept = prc_base, slope = 0, lty = "dotted") +
-    theme_bw() + theme(aspect.ratio=1) +
+    theme_bw() + theme(aspect.ratio = 1) +
     labs(x = "Recall", y = "Precision") +
     scale_color_manual(values = designDF$color) + 
     theme(text = element_text(size = 15), legend.position = "none") +
     ylim(0, 1)
   
   ggsave(g, file = paste0(outPrefix, ".", subStr, ".PRC.pdf"), w = 5, h = 5)
-  
 
   # Only AUC PRC as barplot
   p <- ggplot(aucDFprc, 
@@ -444,7 +400,7 @@ for (subStr in names(subsetList)){
     scale_fill_manual(values = designDF$color) +
     labs(x = "Models", y = "Prediction performance\n(AUC PRC)") +
     ylim(0, 0.45)
-  # p
+  
   ggsave(p, file = paste0(outPrefix, ".", subStr, ".AUC_ROC_PRC.barplot.pdf"), w = 3.5, h = 7)
   
 }
@@ -483,11 +439,9 @@ mcols(gi)$predBinary_Rad21 <- !is.na(mcols(gi)$pred_Rad21) & mcols(gi)$pred_Rad2
 # write CTCF moitfs as BED file
 export.bed(regions(gi), paste0(outPrefix, ".motifs.bed"), index = TRUE)
 
-# chr22 <- GRanges(seqinfo(gi))["chr22"]
-# chr22GI <- subsetByOverlaps(gi, chr22, ignore.strand = TRUE)
-
 onChr22 <- seqnames(regions(gi))[anchors(gi, type = "first", id = TRUE)] == "chr22"
 chr22GI <- gi[onChr22]
+
 # write all chr22 pairs (with labeld true ones)
 writeLongRangeFormat(
   gi = chr22GI, 
@@ -532,13 +486,6 @@ writeLongRangeTrackFormat(
   output_file = paste0(outPrefix, ".gi.pred_Rad21_sub.longrange_track.bed")
 )
 
-
-# # write all pairs (with labeld true ones)
-# writeLongRangeFormat(
-#   gi = gi, 
-#   score_vec = ifelse(mcols(gi)$loop == "Loop", 1, -1), 
-#   output_file = paste0(outPrefix, ".gi.loop.longrange.txt")
-)
 
 #===============================================================================
 #===============================================================================
