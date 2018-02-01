@@ -1,17 +1,17 @@
 # Analysis of chromatin loop predictions
 
 This repository contains the analysis of chromatin looping interaction 
-preidctions using the R package [sevenC](https://github.com/ibn-salem/sevenC). 
+predictions using the R package [sevenC](https://github.com/ibn-salem/sevenC). 
 
-This repository documents all analyis in the associated publicaton:
+This repository documents all analysis in the associated publication:
 
-***Computational chromosome conformation capture by correlation of ChIP-seq at CTCF motifs (7C)***
+***Computational Chromosome Conformation Capture by Correlation of ChIP-seq at CTCF motifs***
 by Jonas Ibn-Salem and Miguel Andrade-Navarro
 
-More details on using the sevenC R package itself can be found on the sevenC 
-[website](https://ibn-salem.github.io/sevenC/).
+More details on using the sevenC R package itself can be found on the [sevenC website](https://ibn-salem.github.io/sevenC/).
 
 # Order of analysis scripts
+
 1. [download.sh](download.sh)
 1. [data_prepare_candidates.R](R/data_prepare_candidates.R)
 1. [analyse_motif_significance.R](R/analyse_motif_significance.R)
@@ -25,20 +25,24 @@ More details on using the sevenC R package itself can be found on the sevenC
 
 ## Download external data
 
-To download all external data for this analysis run the [download.sh](download.sh) script
-from within the `data` directory.
+To download and process all external data for this analysis run the 
+[download.sh](download.sh) script from within the `data` directory.
 ```
 cd data
 sh download.sh
 cd ..
 ```
+
 This will create sub-folders, download external data sets and formats them.
+Note that the scripts downloads a lot of data, installs tools, and executes many 
+external software, it might be easier to execute the commands in the script 
+interactively step by step.
 
 ## Predictions using selected models
 
 ### Prepare candidates
-First we need to read the CTCF motif data and prepare candidate loops as motif pairs. 
-Also candidates are labeled whether they represent true loops according to Hi-C and ChIA-PET.
+First we need to read the CTCF motif data and prepare potential candidate loops as motif pairs. 
+Motif pairs will be labeled whether they represent true loops according to Hi-C and ChIA-PET.
 ```
 Rscript R/data_prepare_candidates.R
 ```
@@ -73,5 +77,10 @@ Rscript R/analyse_HeLa.R
 
 ## Input types for loop prediction
 We analyse different input data types for ChIP-seq and other genomic assays for there performance in loop prediction.
+```
+Rscript R/analyse_input_data_types.R
+Rscript R/analyse_input_data_types_performance.R
+Rscript R/analyse_input_data_types_features.R
+```
 
 
