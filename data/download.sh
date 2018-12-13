@@ -391,7 +391,12 @@ for SAMPLE in "SRR2312570" "SRR2312571" ; do
       ${BAM}-${OUT_TYPE}_allChr_chip.bed.sorted.bedGraph.bw
 
   done  # OUT_TYPE
-  
 
 done # SAMPLE
 
+#=======================================================================
+# Download predicted loops from Oti et al. 2016 
+#=======================================================================
+mkdir -p Oti2016
+
+wget -P Oti2016 https://zenodo.org/record/29423/files/ctcf_predictedloops_ENCODE_chipseq_datasets.tar.gz
