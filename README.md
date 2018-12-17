@@ -12,9 +12,10 @@ More details on using the sevenC R package itself can be found on the [sevenC we
 
 # Order of analysis scripts
 
-1. [download.sh](download.sh)
+1. [download.sh](data/download.sh)
 1. [data_prepare_candidates.R](R/data_prepare_candidates.R)
-1. [analyse_motif_significance.R](R/analyse_motif_significance.R)
+    1. [analyse_motif_significance.R](R/analyse_motif_significance.R)
+    1. [analyse_motif_overlap.R](R/analyse_motif_overlap.R)
 1. [screen_TFs_lfc.R](R/screen_TFs_lfc.R)
 1. [analyse_selected_models.R](R/analyse_selected_models.R)
 1. [loop_freaters_EDA.R](R/loop_freaters_EDA.R)
@@ -26,7 +27,7 @@ More details on using the sevenC R package itself can be found on the [sevenC we
 ## Download external data
 
 To download and process all external data for this analysis run the 
-[download.sh](download.sh) script from within the `data` directory.
+[download.sh](data/download.sh) script from within the `data` directory.
 ```
 cd data
 sh download.sh
