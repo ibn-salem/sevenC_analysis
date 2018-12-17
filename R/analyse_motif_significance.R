@@ -74,21 +74,24 @@ motifGR <- sort(motifGR)
 
 
 # parse loops
-trueLoopsRao <- parseLoopsRao(
-  LoopRao2014_GM12878_File, seqinfo = seqInfoHg19)
+trueLoopsRao <- parseLoopsRao(LoopRao2014_GM12878_File, seqinfo = seqInfoHg19)
 
-trueLoopsTang2015 <- do.call(
-  "c",
-  map(LoopTang2015_GM12878_Files, 
-      sevenC::parseLoopsTang2015, 
-      seqinfo = seqInfoHg19))
+trueLoopsTang2015_list <- map(LoopTang2015_GM12878_Files, 
+                              sevenC::parseLoopsTang, 
+                              seqinfo = seqInfoHg19)
+
+trueLoopsTang2015 <- do.call("c", trueLoopsTang2015_list)
 
 
 gi <- prepareCisPairs(motifGR, maxDist = 1e+6)
 gi <- addInteractionSupport(gi, trueLoopsRao, "Loop_Rao_GM12878")
-gi <- addInteractionSupport(gi, trueLoopsTang2015, "Loop_Tang2015_GM12878")
+gi <- addInteractionSupport(gi, trueLoopsTang2015_list[[1]], "Loop_Tang2015_GM12878_CTCF")
+gi <- addInteractionSupport(gi, trueLoopsTang2015_list[[2]], "Loop_Tang2015_GM12878_RNAPII")
+# gi <- addInteractionSupport(gi, trueLoopsTang2015, "Loop_Tang2015_GM12878")
 gi$loop <- factor(
-  gi$Loop_Tang2015_GM12878 == "Loop" | gi$Loop_Rao_GM12878 == "Loop",
+  gi$Loop_Rao_GM12878 == "Loop" | 
+    gi$Loop_Tang2015_GM12878_CTCF == "Loop" | 
+    gi$Loop_Tang2015_GM12878_RNAPII == "Loop",
   c(FALSE, TRUE),
   c("No loop", "Loop")
 )
