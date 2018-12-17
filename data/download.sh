@@ -140,7 +140,7 @@ export -f update_download
 
 # download files in parallel
 cat ENCODE/URLs.fcDF.txt | parallel -j 10 update_download
-cat ENCODE/URLs.fcDF_selectedTF.txt | parallel -j 3 --no-notice update_download
+cat ENCODE/URLs.fcDF_selectedTF.txt | parallel -j 1 --no-notice update_download
 cat ENCODE/URLs.fc_HELA_selected.txt | parallel -j 1 --no-notice update_download
 
 mkdir -p ENCODE/Experiments
@@ -395,8 +395,29 @@ for SAMPLE in "SRR2312570" "SRR2312571" ; do
 done # SAMPLE
 
 #=======================================================================
-# Download predicted loops from Oti et al. 2016 
+# Download loop prediction tool from Oti et al. 2016 
 #=======================================================================
 mkdir -p Oti2016
 
 wget -P Oti2016 https://zenodo.org/record/29423/files/ctcf_predictedloops_ENCODE_chipseq_datasets.tar.gz
+cd Oti2016
+tar xvfz ctcf_predictedloops_ENCODE_chipseq_datasets.tar.gz
+
+wget https://zenodo.org/record/29423/files/ctcfloopscripts_v1.0.zip
+unzip ctcfloopscripts_v1.0.zip
+
+cd ..
+
+#=======================================================================
+# Download peaks form same CTCF experiments:
+#=======================================================================
+# wtet -P ENCODE/Peaks "https://encode-files.s3.amazonaws.com/2017/03/24/32dbb83e-f1fb-4148-9fef-fc071b4efeb1/ENCFF799POZ.bigBed"
+wget -P ENCODE/Peaks "https://www.encodeproject.org/files/ENCFF710VEH/@@download/ENCFF710VEH.bed.gz"
+gunzip ENCODE/Peaks/ENCFF710VEH.bed.gz 
+
+# get motifs in peaks with score as peak strength
+Rscript R/format_peak_motifs.R
+
+# run Oti2016 tool to predict loops from motifs in peaks
+python Oti2016/ctcfloopscripts/ctcf_peaks2loops.py -i ENCODE/Peaks/ENCFF710VEH.bed.CTCF_motif.bed -o ENCODE/Peaks/ENCFF710VEH.bed.CTCF_motif.bed.Oti_peaks.bed
+
