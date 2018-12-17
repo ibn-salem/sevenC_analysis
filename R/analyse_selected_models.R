@@ -13,7 +13,6 @@ library(RColorBrewer)   # for nice colors
 library(rsample)
 library(pryr) # for object_size()
 library(feather)      # for efficient storing of data.frames
-library(multidplyr)   # for partition() and collect() to work in parallel
 library(ROCR)         # for binary clasification metrices
 
 source("R/sevenC.functions.R")
@@ -108,6 +107,7 @@ if (!GI_LOCAL ) {
   for (i in seq_len(nrow(meta))) {
     
     message("INFO: --> Working on sample: ", meta$name[i], ", ", i, " of ", nrow(meta), " <--")
+    message("INFO: File: ", meta$filePath[[i]], " Exists: ", file.exists(meta$filePath[[i]]))
     
     #add coverage and correlation of coverage
     gi <- addCor(
@@ -486,6 +486,9 @@ writeLongRangeTrackFormat(
   output_file = paste0(outPrefix, ".gi.pred_Rad21_sub.longrange_track.bed")
 )
 
+# write to JuiceBox 2D annotation format
+writeJuiceboxFormat(rad21GI, resolution = 1000, 
+          output_file = paste0(outPrefix, ".gi.pred_Rad21_sub.2D_annot3.tsv"))
 
 #===============================================================================
 #===============================================================================
