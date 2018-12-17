@@ -286,7 +286,8 @@ plotDF <- aucDF %>%
   mutate(pred_type = factor(
     pred_type, 
     levels = c("specificTF", "allTF", "bestN"),
-    labels = c("Specific TF", "Avg. all TF", "Avg. best 10 TF"))
+    labels = c("Specific TF", "Avg. all TF", "Avg. best 10 TF")),
+  curvetypes = factor(curvetypes, c("ROC", "PRC"))
   )
 
 p <- ggplot(plotDF, aes(x = name, y = aucs, fill = name)) +
@@ -363,8 +364,9 @@ ggsave(g, file = paste0(outPrefix, ".ROC.pdf"), w = 5, h = 5)
 aucDFprc <- aucDF %>% 
   filter(curvetypes == "PRC", pred_type == "specificTF")
 
-# prc_base = precrec:::.get_pn_info(curves)$prc_base
-# write_rds(prc_base, paste0(outPrefix, "prc_base.rds"))
+prc_base = precrec:::.get_pn_info(curves)$prc_base
+write_rds(prc_base, paste0(outPrefix, "prc_base.rds"))
+# prc_base <- read_rds(paste0(outPrefix, "prc_base.rds"))
 
 prcDF <- curveDFsub %>% 
   filter(type == "PRC", pred_type == "specificTF")
@@ -386,7 +388,8 @@ g <- ggplot(prcDF, aes(x = x, y = y, color = name)) +
   ) +
   theme(aspect.ratio = 1, 
         legend.position = "none", 
-        text = element_text(size = 15))  
+        text = element_text(size = 15)) +
+  ylim(0, 1)
 
 ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
 
