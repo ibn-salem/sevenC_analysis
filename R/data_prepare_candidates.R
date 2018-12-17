@@ -3,9 +3,9 @@
 #*******************************************************************************
 
 library(sevenC)  # to import() BED files
-require(TxDb.Hsapiens.UCSC.hg19.knownGene)  # for seqinfo object
-require(BSgenome.Hsapiens.UCSC.hg19) # for human genome sequence
-require(DNAshapeR)    # for DNA shape prediction
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)  # for seqinfo object
+library(rtracklayer)  # to export bed files
+library(DNAshapeR)    # for DNA shape prediction
 library(tidyverse)    # for tidy data
 library(stringr)      # for string functions
 library(readr)        # for write_rds()
@@ -87,19 +87,25 @@ gi <- prepareCisPairs(motifGR, maxDist = 10^6)
 trueLoopsRao <- parseLoopsRao(
   LoopRao2014_GM12878_File, seqinfo = seqInfoHg19)
 
-trueLoopsTang2015 <- do.call(
-  "c",
-  map(LoopTang2015_GM12878_Files, 
-         sevenC::parseLoopsTang2015, 
-         seqinfo = seqInfoHg19))
+trueLoopsTang2015_list <- map(LoopTang2015_GM12878_Files, 
+                              sevenC::parseLoopsTang, 
+                              seqinfo = seqInfoHg19)
 
+# add overlap with true loops
 gi <- addInteractionSupport(gi, trueLoopsRao, "Loop_Rao_GM12878")
-gi <- addInteractionSupport(gi, trueLoopsTang2015, "Loop_Tang2015_GM12878")
+gi <- addInteractionSupport(gi, trueLoopsTang2015_list[[1]], 
+                            "Loop_Tang2015_GM12878_CTCF")
+gi <- addInteractionSupport(gi, trueLoopsTang2015_list[[2]], 
+                            "Loop_Tang2015_GM12878_RNAPII")
+# combine loop annotations
 gi$loop <- factor(
-  gi$Loop_Tang2015_GM12878 == "Loop" | gi$Loop_Rao_GM12878 == "Loop",
+  gi$Loop_Rao_GM12878 == "Loop" | 
+    gi$Loop_Tang2015_GM12878_CTCF == "Loop" | 
+    gi$Loop_Tang2015_GM12878_RNAPII == "Loop",
   c(FALSE, TRUE),
   c("No loop", "Loop")
 )
+
 # save file for faster reload
 write_rds(gi, paste0(dataCandidatesPreifx, ".gi.rds"))
 
