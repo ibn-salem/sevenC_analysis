@@ -185,4 +185,41 @@ isLinked <- function(linkDF, len){
   is.element(seq(len), linkDF$gr1)
 }
 
+#' Write Juicebox 2d annotation format
+#' 
+#' 
+#' See https://github.com/aidenlab/Juicebox/wiki/Loading-Annotations-(Annotations-menu)#adding-2d-annotations
+#' Example format:
+#' 
+#' chr1   x1         x2         chr2   y1         y2         color     comment
+#' chrX   85000000   89000000   chrX   85000000   89000000   0,255,0   My green region
+#' chrX   90000000   99100000   chrX   90000000   99100000   0,0,255   My blue region
+#' 
+#' @param gi
+#' @param output_file Path to output file.
+#' @param color Character vectorof length one or same as input regions with the color. Default is "0,0,255" for blue.
+#' @param comment Character vectorof length one or same as input regions with a comment or name for each feature. Default is "" for no comment.
+#' 
+writeJuiceboxFormat <- function(gi, output_file, resolution = 50000, color = "0,0,255", comment = ""){
+  
+  anc1 <- anchors(gi, type = "first")
+  anc2 <- anchors(gi, type = "second")
+  
+  round_up <- function(x) ceiling( (x+1) / resolution) * resolution
+  round_down <- function(x) floor(x / resolution) * resolution
+  
+  out_df <- tibble::tibble(
+    chr1 = seqnames(anc1) %>% as.character(),
+    x1 = start(anc1) %>% round_down(),
+    x2 = end(anc1) %>% round_up(),
+    chr2 = seqnames(anc2) %>% as.character(),
+    y1 = start(anc2) %>% round_down(),
+    y2 = end(anc2) %>% round_up(),
+    color = color,
+    comment = comment,
+  )
+
+  readr::write_tsv(out_df, output_file)
+  
+}
 
