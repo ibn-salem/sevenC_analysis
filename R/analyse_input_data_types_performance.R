@@ -66,11 +66,11 @@ names(COL_DATA) <- c(names(COL_SELECTED_TF_2), "SMC3", "input", "DNase-seq")
 
 # remove TF_only models
 designDF <- designDF %>%
-  filter(!str_detect(name, ".*_only$") ) %>%
+  # filter(!str_detect(name, ".*_only$") ) %>%
   mutate(name = factor(name, name))
 
-cvDF <- cvDF %>%
-  filter(!str_detect(name, ".*_only$") )
+# cvDF <- cvDF %>%
+#   filter(!str_detect(name, ".*_only$") )
 
 # get AUC of ROC and PRC curves for all 
 curves <- evalmod(
@@ -98,7 +98,11 @@ aucDFmed <- aucDF %>%
     aucs_sd = sd(aucs, na.rm = TRUE)
   ) %>% 
   ungroup() %>% 
-  left_join(meta, by = c("modnames" = "name")) 
+  left_join(meta, by = c("modnames" = "name")) %>% 
+  mutate(
+    with_sequence_features = grepl("_only$", modnames) %>% 
+      ifelse("pure", "with_sequence")
+  )
 
 write_feather(aucDFmed, paste0(outPrefix, ".aucDFmed.feather"))
 # aucDFmed <- read_feather(paste0(outPrefix, ".aucDFmed.feather"))
@@ -110,7 +114,7 @@ p <- ggplot(aucDFmed, aes(x = modnames, y = aucs_mean, fill = TF)) +
   geom_errorbar(aes(ymin = aucs_mean - aucs_sd, ymax = aucs_mean + aucs_sd),
                 width = .25, position = position_dodge(width = 1)) + 
   geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), size = 3, vjust = 1.5) +
-  facet_grid(curvetypes ~ output_type, scales = "free", space = "free_x") +
+  facet_grid(curvetypes ~ with_sequence_features + output_type, scales = "free", space = "free_x") +
   theme_bw() +
   theme(text = element_text(size = 15),
         axis.text.x = element_text(angle = 60, hjust = 1, size = 15),
@@ -136,19 +140,28 @@ ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot_by_data_type.pdf"
 
 
 # Selected plots  --------------------------------------------------------------
+
 meta_sub <- meta %>%
   filter(
+    !str_detect(name, ".*_only$"),
     !output_type %in% c("base overlap signal", "raw signal", "signal p-value", "signal_UCSC"),
     !(output_type == "signal" & data_type == "ChIP-seq")
   ) %>% 
   write_tsv(paste0(outPrefix, ".meta_filtered_sub.tsv"))
 
+genomic_feature_performance <- aucDFmed %>% 
+  filter(modnames == "Dist+Orientation+Motif", curvetypes == "PRC") %>% 
+  pull(aucs_mean)
+
+
 subDF <- aucDFmed %>% 
   filter(
     curvetypes == "PRC",
+    !str_detect(modnames, ".*_only$"),
     !output_type %in% c("base overlap signal", "raw signal", "signal p-value", "signal_UCSC"),
-    is.na(output_type) | !(output_type == "signal" & data_type == "ChIP-seq")
-    ) %>% 
+    # is.na(output_type) | !(output_type == "signal" & data_type == "ChIP-seq")
+    !(output_type == "signal" & data_type == "ChIP-seq")
+  ) %>% 
   mutate(
     plot_name = ifelse(!is.na(TF), TF, modnames),
     data_type = factor(data_type, c("ChIP-seq", "DNase-seq", "ChIP-nexus")),
@@ -160,6 +173,7 @@ p <- ggplot(subDF, aes(x = plot_name, y = aucs_mean, fill = TF)) +
   geom_errorbar(aes(ymin = aucs_mean - aucs_sd, ymax = aucs_mean + aucs_sd),
                 width = .25) + 
   geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), size = 4, hjust = 1.1) +
+  geom_hline(yintercept = genomic_feature_performance, linetype = 2) +
   coord_flip() +
   facet_grid(data_type + output_type ~ . , scales = "free", space = "free_y", switch = NULL) +
   theme_bw() +
