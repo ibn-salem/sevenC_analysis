@@ -111,29 +111,33 @@ motif_cutoff_DF <- tibble(
 )
 
 write_tsv(motif_cutoff_DF, paste0(outPrefix, ".moitf_cutoff_DF.tsv"))
+# motif_cutoff_DF <- read_tsv(paste0(outPrefix, ".moitf_cutoff_DF.tsv"))
 
 p <- ggplot(motif_cutoff_DF, aes(x = log10_p, y = n_motif)) +
   geom_line() +
   geom_point() +
+  geom_vline(xintercept = -log10(MOTIF_PVAL), linetype = 2) +
   theme_bw() + 
-  labs(x = "Motif significance -log10(p-value)", y = "Number of motifs")
+  labs(x = "Motif significance\n-log10(p-value)", y = "Motifs")
 ggsave(paste0(outPrefix, ".motifs_by_moitf_cutoff.pdf"), p,
-       w = 3, h = 3)
+       w = 2, h = 2)
 
 p <- ggplot(motif_cutoff_DF, aes(x = log10_p, y = n_gi)) +
   geom_line() +
   geom_point() +
+  geom_vline(xintercept = -log10(MOTIF_PVAL), linetype = 2) +
   theme_bw() + 
-  labs(x = "Motif significance -log10(p-value)", y = "Number of motif pairs")
+  labs(x = "Motif significance\n-log10(p-value)", y = "Motif pairs")
 ggsave(paste0(outPrefix, ".motifs_pairs_by_moitf_cutoff.pdf"),
-       w = 3, h = 3)
-
+       w = 2, h = 2)
 
 p <- ggplot(motif_cutoff_DF, aes(x = log10_p, y = percent_loop)) +
-  geom_line() +
-  geom_point() +
+  geom_line(color = COL_LOOP[[2]]) +
+  geom_point(color = COL_LOOP[[2]]) +
+  geom_vline(xintercept = -log10(MOTIF_PVAL), linetype = 2) +
   theme_bw() + 
-  labs(x = "Motif significance -log10(p-value)", y = "Percent true loops")
+  scale_color_manual(values = COL_LOOP[[2]]) +
+  labs(x = "Motif significance\n-log10(p-value)", y = "Percent true loops")
 ggsave(paste0(outPrefix, ".percent_true_loops_by_moitf_cutoff.pdf"),
-       w = 3, h = 3)
+       w = 2, h = 2)
 

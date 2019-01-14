@@ -44,6 +44,10 @@ outPrefix <- file.path("results", paste0("v05_screen_TF_lfc.",
                                          paste0("motifPval", MOTIF_PVAL), 
                                          "_w", WINDOW_SIZE, 
                                          "_b", BIN_SIZE))
+out_prefix_selected_models <- file.path("results", paste0("v05_selected_models.", 
+                                                          paste0("motifPval", MOTIF_PVAL), 
+                                                          "_w", WINDOW_SIZE, 
+                                                          "_b", BIN_SIZE))
 
 dir.create(dirname(outPrefix), showWarnings = FALSE)
 
@@ -582,7 +586,17 @@ p <- ggplot(aucDFcombined, aes(x = name, y = aucs_mean,
 
 ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot.pdf"), w = 14, h = 7)
 
+#-------------------------------------------------------------------------------
 # only PRC AUC
+#-------------------------------------------------------------------------------
+# get baseline performance 
+aucDFmed_selected_models <- read_feather(paste0(out_prefix_selected_models, ".aucDFmed.feather"))
+baseline_auPRC <- aucDFmed_selected_models %>% 
+  filter(modnames == "Dist+Orientation+Motif",
+         curvetypes == "PRC") %>% 
+  pull(aucs_mean)
+
+
 prcDF <- aucDFcombined %>% 
   filter(curvetypes == "PRC")
 
@@ -591,6 +605,7 @@ p <- ggplot(prcDF, aes(x = name, y = aucs_mean,
                                fill = name)) +
   geom_bar(stat = "identity") +
   geom_errorbar(width = .25) + 
+  geom_hline(yintercept = baseline_auPRC, linetype = 2) +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 8), legend.position = "none") +
   scale_fill_manual(values = COL_TF) +

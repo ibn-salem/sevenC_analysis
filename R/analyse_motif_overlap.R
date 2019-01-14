@@ -8,6 +8,7 @@ library(tidyverse)    # for tidy data
 library(stringr)      # for string functions
 library(readr)        # for write_rds()
 require(RColorBrewer)   # for nice colors
+library(UpSetR)
 
 #*******************************************************************************
 # Parameters ----
@@ -55,9 +56,11 @@ trueLoopsTang2015_list <- map(LoopTang2015_GM12878_Files,
                               seqinfo = seqInfoHg19)
 
 # Analyse overalp of true loops with motif pairs -------------------------------
+dataset_names <- c("Rao2014 Hi-C", "Tang2015 CTCF ChIA-PET", "Tang2015 PolII ChIA-PET")
+
 
 loop_data_sets <- tibble(
-  name = c("Rao_GM12878", "Tang2015_GM12878_CTCF", "Loop_Tang2015_GM12878_RNAPII"),
+  name = factor(dataset_names, dataset_names),
   loops = list(trueLoopsRao, trueLoopsTang2015_list[[1]], trueLoopsTang2015_list[[2]]),
   loop_n = map_int(loops, length),
   overlaps_motif_pairs = map(loops, overlapsAny, gi),
@@ -66,7 +69,7 @@ loop_data_sets <- tibble(
   overlap_percent = overlap_n / loop_n * 100
   )
 
-ggplot(loop_data_sets, aes(x = name, y = overlap_percent, fill = name, 
+ggplot(loop_data_sets, aes(x = fct_rev(name), y = overlap_percent, fill = name, 
                                 label = str_c(overlap_n, "\n(", round(overlap_percent, 2), "%)")
                                 )) +
   geom_bar(stat = "identity") +
@@ -77,7 +80,7 @@ ggplot(loop_data_sets, aes(x = name, y = overlap_percent, fill = name,
   theme(legend.position = "none") +
   labs(y = "Percent overlap with CTCF pairs",
        x = "")
-ggsave(paste0(outPrefix, ".True_loops_overlap_with_CTCF_pairs.pdf"), w = 6, h = 3)
+ggsave(paste0(outPrefix, ".True_loops_overlap_with_CTCF_pairs.pdf"), w = 4.5, h = 3)
 
 loops <- loop_data_sets %>% 
   mutate(
@@ -90,18 +93,22 @@ loops <- loop_data_sets %>%
   )
 
 # distance distribution of mesarued loops
-ggplot(loops, aes(x = dist / 1000, stat(count), fill = name, color = name)) +
-  geom_density(alpha = 0.3) + 
+ggplot(loops, aes(x = dist / 1000, stat(count), fill = fct_rev(name), color = fct_rev(name))) +
+  geom_density(alpha = 0.25) + 
   geom_vline(xintercept = 10^3, color = "red", linetype = 2) +
   scale_x_log10() +
-  scale_fill_manual("", values = COL_LOOP_DATA) +
-  scale_color_manual("", values = COL_LOOP_DATA) +
+  scale_fill_manual("", values = rev(COL_LOOP_DATA)) +
+  scale_color_manual("", values = rev(COL_LOOP_DATA)) +
   theme_bw() +
-  theme(legend.position = "bottom",
-        legend.text = element_text(size = 8)
-        ) + 
+  theme(
+    # legend.position = "bottom",
+    legend.position = c(1, 1),
+    legend.justification = c(1, 1),
+    legend.text = element_text(size = 8)
+  ) + 
+  guides(fill = guide_legend(nrow = 3)) +
   labs(x = "Distance [kb]", y = "Interactions")
-ggsave(paste0(outPrefix, ".True_loops_by_distance.pdf"), w = 6, h = 3)
+ggsave(paste0(outPrefix, ".True_loops_by_distance.pdf"), w = 4.5, h = 3)
 
 # number of CTCF moitf pairs per loop
 overlap_counts <- loops %>% 
@@ -116,7 +123,7 @@ overlap_counts <- loops %>%
     percent = n / sum(n) * 100
     )
 
-ggplot(overlap_counts, aes(x = name, y = percent , 
+ggplot(overlap_counts, aes(x = fct_rev(name), y = percent , 
                            label = str_c(n, "\n(", round(percent, 2), "%)"), 
                            fill = overlap_counts_group)) +
   geom_bar(stat = "identity") + 
@@ -124,33 +131,23 @@ ggplot(overlap_counts, aes(x = name, y = percent ,
             data = filter(overlap_counts, overlap_counts_group %in% c("1", "2")), size = 3) +
   # scale_fill_manual("", values = COL_LOOP_DATA) +
   # scale_color_manual("", values = COL_LOOP_DATA) +
-  scale_fill_brewer("Number of \n overlapping motif pairs", palette = "BuGn") +
+  scale_fill_brewer("Number of \n overlapping\nmotif pairs", palette = "BuGn") +
   coord_flip() +
   theme_bw() +
   theme(legend.position = "bottom",
         legend.text = element_text(size = 8)
   ) + 
   labs(x = "", y = "Interactions [%]")
-ggsave(paste0(outPrefix, ".True_loops_overlap_with_CTCF_pairs_counts.pdf"), w = 6, h = 3)
+ggsave(paste0(outPrefix, ".True_loops_overlap_with_CTCF_pairs_counts.pdf"), w = 4.5, h = 3)
 
+# Overlap ob truth data sets----------------------------------------------------
 
-loop_frac <- loops %>% 
-  group_by(name, dist_range) %>% 
-  summarize(
-    n = n(),
-    percent = sum(overlaps_motif_pairs) / n() * 100
-    )
+loop_set_df <- mcols(gi) %>% 
+  as.data.frame() %>% 
+  select(Loop_Rao_GM12878, Loop_Tang2015_GM12878_CTCF, Loop_Tang2015_GM12878_RNAPII) %>% 
+  set_names(dataset_names) %>% 
+  mutate_all(function(x) ifelse(x == "Loop", 1, 0))
 
-# number of measured loops by dist range
-ggplot(loop_frac, aes(x = dist_range, y = n, fill = name)) +
-  geom_bar(stat = "identity", position = "dodge") + 
-  theme_bw() + 
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-# ovelrap with motif pairs by dist range
-ggplot(loop_frac, aes(x = dist_range, y = percent, fill = name)) +
-  geom_bar(stat = "identity", position = "dodge") + 
-  theme_bw() + 
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-
+pdf(paste0(outPrefix, ".True_loops_dataset_overlap.pdf"), w = 4.5, h = 3, onefile=FALSE)
+  upset(loop_set_df, sets = rev(dataset_names), keep.order = TRUE)
+dev.off()
