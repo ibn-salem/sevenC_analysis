@@ -24,4 +24,6 @@ data/JASPAR2018
 data/Wu2013
 data/EnhancerAtlas
 data/Pataskar2016
+data/Oti2016
+data/HiChIP
 results/*
