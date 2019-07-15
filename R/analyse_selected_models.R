@@ -14,6 +14,10 @@ library(rsample)
 library(pryr) # for object_size()
 library(feather)      # for efficient storing of data.frames
 library(ROCR)         # for binary clasification metrices
+library(furrr)        # for parallelization
+
+plan(multiprocess, workers = 3)
+plan()
 
 source("R/sevenC.functions.R")
 
@@ -132,6 +136,24 @@ if (!GI_LOCAL ) {
     colname = "across_TFs"
   )
   
+  # compute sum of signal at first and second anchor as separate predictor colums
+  
+  reg <- mcols(regions(gi))
+  idx1 <- anchorIds(gi, "first")
+  idx2 <- anchorIds(gi, "second")
+  
+  for (TF in meta$name) {
+    
+    message("INFO: --> Working on sample: ", TF, " <--")
+    
+    # get sum of all position values as total signal per anchor region
+    reg[, str_c("sum_", TF)] <- reg[, TF] %>% as.list() %>% map_dbl(sum)
+    
+    # add first and second anchor signal separatly to gi object
+    mcols(gi)[, str_c("cov1_", TF)] <-  reg[, str_c("sum_", TF)][idx1]
+    mcols(gi)[, str_c("cov2_", TF)] <-  reg[, str_c("sum_", TF)][idx2]
+  }
+  
   # save file for faster reload
   write_rds(gi, paste0(outPrefix, ".gi.rds"))
   
@@ -180,20 +202,23 @@ designDF <- tibble(
   name = c(
     names(designList),
     paste0(meta$name, "_only"),
+    paste0(meta$name, "_cov"),
     meta$name
   ),
   design = c(
     designList,
     map(meta$name, ~as.formula(paste0("loop ~ cor_", .x)) ),
+    map(meta$name, ~as.formula(paste0("loop ~ dist + strandOrientation + score_min + cov1_", .x, " + cov2_", .x)) ),
     map(meta$name, ~as.formula(paste0("loop ~ dist + strandOrientation + score_min + cor_", .x)) )
   ),
   color = c(
     c("greenyellow", "gold2", "khaki", "brown4", "darkgray", "grey30"),
     COL_SELECTED_TF_1,
+    COL_SELECTED_TF_1,
     COL_SELECTED_TF_2
   )
 ) %>% 
-  mutate(name = factor(name, c(names(designList)[1:4], paste0(meta$name, "_only"), meta$name, "all_TF", "across_TFs"))) %>% 
+  mutate(name = factor(name, c(names(designList)[1:4], paste0(meta$name, "_only"), paste0(meta$name, "_cov"), meta$name, "all_TF", "across_TFs"))) %>% 
   arrange(name)
 
 write_rds(designDF, paste0(outPrefix, "designDF.rds"))
@@ -212,9 +237,9 @@ cvDF <- cvDF %>%
   # fit model on training part
   # fit model and save estimates in tidy format
   mutate(
-    tidy_model = map2(Fold, design, .f = tidyer_fitter, 
+    tidy_model = future_map2(Fold, design, .f = tidyer_fitter, 
                       tidyCV = tidyCV, data = df),
-    pred = pmap(
+    pred = future_map(
       list(
         map(Fold, tidy_assessment, data = df, tidyCV = tidyCV),
         design,
