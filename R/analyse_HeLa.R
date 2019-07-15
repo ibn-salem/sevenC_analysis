@@ -13,7 +13,9 @@ require(rtracklayer)  # to import() BED files
 require(rsample)
 require(pryr) # for object_size()
 require(feather)      # for efficient storing of data.frames
-require(multidplyr)   # for partition() and collect() to work in parallel
+library(Vennerable)   # for Venn-Diagram
+
+# require(multidplyr)   # for partition() and collect() to work in parallel
 
 source("R/sevenC.functions.R")
 
@@ -117,7 +119,8 @@ access_table <- meta %>%
 gi <- read_rds(paste0(dataCandidatesPreifx, ".gi.rds"))
 
 # remove annotation from GM12878 cells
-mcols(gi)[, c("Loop_Rao_GM12878", "Loop_Tang2015_GM12878", "loop")] <- NULL
+gi$loop_GM12878 <- gi$loop
+mcols(gi)[, c("Loop_Rao_GM12878", "Loop_Tang2015_GM12878_CTCF", "Loop_Tang2015_GM12878_RNAPII", "loop")] <- NULL
 
 
 # parse true loops in HeLa
@@ -127,7 +130,7 @@ trueLoopsRao <- sevenC::parseLoopsRao(
 trueLoopsTang2015 <- do.call(
   "c",
   lapply(LoopTang2015_HeLa_Files, 
-         sevenC::parseLoopsTang2015, 
+         sevenC::parseLoopsTang, 
          seqinfo = seqInfo))
 
 gi <- addInteractionSupport(gi, trueLoopsRao, "Loop_Rao_HeLa")
@@ -150,6 +153,32 @@ countLoopsDF <- gi %>%
   count(loop) %>% 
   mutate(percent = n / sum(n) * 100) %>% 
   write_tsv(paste0(outPrefix, ".count_positive_loops.tsv"))
+
+
+# Get performance of GM12878 loops in HeLa -------------------------------------
+conf_tab <- table(gi$loop, gi$loop_GM12878)
+GM_sens <- sum(gi$loop == "Loop" & gi$loop_GM12878 == "Loop") / sum(gi$loop == "Loop")
+GM_ppv <- sum(gi$loop == "Loop" & gi$loop_GM12878 == "Loop") / sum(gi$loop_GM12878 == "Loop")
+GM_spec <- sum(gi$loop == "No loop" & gi$loop_GM12878 == "No loop") / sum(gi$loop == "No loop")
+
+gm_performance <- tibble(
+  name = "GM12878_measured",
+  sens = GM_sens,
+  ppv = GM_ppv,
+  spec = GM_spec
+)
+
+write_tsv(gm_performance, str_c(outPrefix, ".gm_performance.tsv"))
+
+# overlap of GM12878 loops and HeLa loops
+loop_list <- list(
+  GM12878 = which(gi$loop_GM12878 == "Loop"),
+  HeLa = which(gi$loop == "Loop")
+)
+v <- Venn(loop_list)
+pdf(str_c(outPrefix, ".loop_overlap_GM12878_HeLa.pdf"))
+  plot(v, show = list(Faces = FALSE))
+dev.off()
 
 # Annotae with coverage and correlation ----------------------------------------
 
@@ -184,22 +213,23 @@ if (!GI_LOCAL ) {
   
   # save file for faster reload
   write_rds(gi, paste0(outPrefix, ".gi.rds"))
+
+  df <- as_tibble(as.data.frame(mcols(gi))) %>%
+    mutate(
+      id = 1:nrow(.)
+    ) %>% 
+    select(id, loop, everything()) 
+  
+  write_feather(df, paste0(outPrefix, ".df.feather"))
   
 } else {
   gi <- read_rds(paste0(outPrefix, ".gi.rds"))
+  df <- read_feather(paste0(outPrefix, ".df.feather"))
 }
 
 #-------------------------------------------------------------------------------
 # Analyse loopps --------------------------------------------------------
 #-------------------------------------------------------------------------------
-df <- as_tibble(as.data.frame(mcols(gi))) %>%
-  mutate(
-    id = 1:nrow(.)
-  ) %>% 
-  select(id, loop, everything()) 
-
-write_feather(df, paste0(outPrefix, ".df.feather"))
-# df <- read_feather(paste0(outPrefix, ".df.feather"))
 
 #===============================================================================
 # Number of positive looops in HeLA data
@@ -342,6 +372,9 @@ rocDF <- curveDFsub %>%
 g <- ggplot(rocDF, aes(x = x, y = y, color = name)) +
   geom_line() +
   geom_abline(intercept = 0, slope = 1, lty = "dotted") +
+  geom_point(aes(x = 1 - spec, y = sens), data = gm_performance, size = 2, color = "darkgray") +
+  geom_text(aes(x = 1 - spec, y = sens, label = "GM12878 loops"), data = gm_performance, 
+            color = "darkgray", hjust = 1.05, vjust = -0.5, angle = 90) +
   theme_bw() +
   labs(x = "1 - Specificity", y = "Sensitivity") +
   scale_color_manual("",
@@ -374,6 +407,9 @@ prcDF <- curveDFsub %>%
 g <- ggplot(prcDF, aes(x = x, y = y, color = name)) +
   geom_line() +
   geom_abline(intercept = prc_base, slope = 0, lty = "dotted") +
+  geom_point(aes(x = sens, y = ppv), data = gm_performance, size = 2, color = "darkgray") +
+  geom_text(aes(x = sens, y = ppv, label = "GM12878 loops"), data = gm_performance, 
+            color = "darkgray", hjust = 1.1) +
   theme_bw() +
   labs(x = "Recall", y = "Precision") +
   scale_color_manual("",
@@ -390,7 +426,6 @@ g <- ggplot(prcDF, aes(x = x, y = y, color = name)) +
         legend.position = "none", 
         text = element_text(size = 15)) +
   ylim(0, 1)
-
 ggsave(g, file = paste0(outPrefix, ".PRC.pdf"), w = 5, h = 5)
 
 
