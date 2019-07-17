@@ -234,12 +234,12 @@ cvDF <- tidyCV %>%
 # partition data set to clusters
 cvDF <- cvDF %>% 
   group_by(name, Fold) %>% 
-  # fit model on training part
+
   # fit model and save estimates in tidy format
   mutate(
     tidy_model = future_map2(Fold, design, .f = tidyer_fitter, 
                       tidyCV = tidyCV, data = df),
-    pred = future_map(
+    pred = future_pmap(
       list(
         map(Fold, tidy_assessment, data = df, tidyCV = tidyCV),
         design,
@@ -265,7 +265,10 @@ write_rds(cvDF, path = paste0(outPrefix, "cvDF.rds"))
 
 # remove TF_only models
 designDF <- designDF %>%
-  filter(!str_detect(name, ".*_only$") ) %>%
+  filter(
+    !str_detect(name, ".*_only$"),
+    !str_detect(name, ".*_cov$")
+  ) %>%
   mutate(name = factor(name, name))
 
 cvDF <- cvDF %>%
@@ -431,4 +434,83 @@ for (subStr in names(subsetList)) {
 }
 
 #===============================================================================
+# Compare 7C against coverage models -------------------------------------------
 #===============================================================================
+
+# load unfiltered data
+designDF <- read_rds(paste0(outPrefix, "designDF.rds"))
+cvDF <- read_rds(paste0(outPrefix, "cvDF.rds"))
+
+# put TFs next to each other
+name_levels <- str_c(rep(meta$TF, each = 2), rep(c("", "_cov"), nrow(meta)))
+
+# remove TF_only models
+designDF <- designDF %>%
+  filter(
+    name %in% name_levels
+  ) %>%
+  mutate(name = factor(name, name_levels)) %>% 
+  arrange(name)
+
+cvDF <- cvDF %>%
+  filter(name %in% name_levels)
+
+# get AUC of ROC and PRC curves for all 
+curves <- evalmod(
+  scores = cvDF$pred,
+  labels = cvDF$label,
+  modnames = as.character(cvDF$name),
+  dsids = cvDF$id,
+  posclass = levels(cvDF$label[[1]])[2],
+  x_bins = 100)
+
+write_rds(curves, paste0(outPrefix, ".cov_curves.rds"))
+# curves <- read_rds(paste0(outPrefix, ".cov_curves.rds"))
+
+# get data.frame with auc values
+aucDF <-  as_tibble(auc(curves)) %>% 
+  mutate(modnames = factor(modnames, levels(designDF$name))) %>% 
+  arrange(modnames)
+
+aucDFmed <- aucDF %>%
+  group_by(modnames, curvetypes) %>% 
+  summarize(
+    aucs_median = median(aucs, na.rm = TRUE),
+    aucs_mean = mean(aucs, na.rm = TRUE),
+    aucs_sd = sd(aucs, na.rm = TRUE)
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+    curvetypes = factor(curvetypes, c("ROC", "PRC"))
+  )
+
+write_feather(aucDFmed, paste0(outPrefix, ".cov_aucDFmed.feather"))
+# aucDFmed <- read_feather(paste0(outPrefix, ".cov_aucDFmed.feather"))
+
+#-------------------------------------------------------------------------------
+# barplot of AUCs of PRC
+#-------------------------------------------------------------------------------
+
+p <- aucDFmed %>% 
+  filter(curvetypes == "PRC") %>% 
+  mutate(TF = str_replace(modnames, "_cov", "") %>% factor(meta$TF),
+         model = ifelse(str_detect(modnames, "_cov"), "ChIP signal", "7C")
+         ) %>% 
+  ggplot(aes(x = model, y = aucs_mean, fill = modnames)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    geom_errorbar(aes(ymin = aucs_mean - aucs_sd, ymax = aucs_mean + aucs_sd),
+                  width = .25, position = position_dodge(width = 1)) +
+    geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), 
+              size = 5, hjust = 1.2, angle = 90) +
+    # geom_text(aes(label = round(aucs_mean, 2), y = aucs_mean - aucs_sd), size = 3, vjust = 1.5) +
+    facet_grid(. ~ TF, scales = "free") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+          legend.position = "none",
+          text = element_text(size = 15)) +
+    scale_fill_manual(values = designDF$color) +
+    labs(x = "Model", y = "Prediction performance\n(auPRC)")
+
+ggsave(p, file = paste0(outPrefix, ".cov_AUC_ROC_PRC.barplot.pdf"), w = 5, h = 3.5)
+
+
