@@ -195,6 +195,39 @@ mkdir p ENCODE/input
 wget -P ENCODE/input http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/wgEncodeSydhTfbsGm12878InputStdSig.bigWig
 
 #-------------------------------------------------------------------------------
+# Histone ChIP-seq
+#-------------------------------------------------------------------------------
+
+
+# Top 5 frequent marks (across all tissues)
+# H3K4me3 497
+# H3K4me1 414
+# H3K36me3 408
+# H3K27ac 386
+# H3K27me3 379
+
+# Top 5 frequent marks in GM12878
+# H3K4me3 3
+# H3K27me3 2
+# H3K36me3 2
+# H2AFZ 1
+# H3K27ac 1
+
+# ENCODE URL (in Browser): https://www.encodeproject.org/search/?type=Experiment&status=released&assay_title=Histone+ChIP-seq&biosample_ontology.term_name=GM12878&assembly=hg19&files.file_type=bigWig&target.label=H3K4me3&target.label=H3K4me1&target.label=H3K36me3&target.label=H3K27ac&target.label=H3K27me3
+mkdir p ENCODE/histone
+wget -O ENCODE/histone/files.txt "https://www.encodeproject.org/search/?type=Experiment&status=released&assay_title=Histone+ChIP-seq&biosample_ontology.term_name=GM12878&assembly=hg19&files.file_type=bigWig&target.label=H3K4me3&target.label=H3K4me1&target.label=H3K36me3&target.label=H3K27ac&target.label=H3K27me3"
+wget -O ENCODE/histone/metadata.tsv "https://www.encodeproject.org/metadata/type%3DExperiment%26status%3Dreleased%26assay_title%3DHistone%2BChIP-seq%26biosample_ontology.term_name%3DGM12878%26assembly%3Dhg19%26files.file_type%3DbigWig%26target.label%3DH3K4me3%26target.label%3DH3K4me1%26target.label%3DH3K36me3%26target.label%3DH3K27ac%26target.label%3DH3K27me3%26lab.title%3DBradley%2BBernstein%252C%2BBroad/metadata.tsv"
+
+# filter by metadata using R script filter_ENCODE.R
+cd ..
+Rscript R/filter_ENCODE_histone.R
+cd data
+
+# download the data
+
+# download files in parallel
+cat ENCODE/histone/URLs.txt | parallel -j 3 update_download
+#-------------------------------------------------------------------------------
 # ChIP-seq BAM file for Rad21 in GM12878 from ENCODE / UCSC
 #-------------------------------------------------------------------------------
 # See http://hgdownload.cse.ucsc.edu/goldenPath/hg19/encodeDCC/wgEncodeSydhTfbs/
