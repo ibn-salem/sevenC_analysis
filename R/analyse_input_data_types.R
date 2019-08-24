@@ -12,7 +12,8 @@ library(RColorBrewer)   # for nice colors
 library(rsample)
 library(pryr) # for object_size()
 library(feather)      # for efficient storing of data.frames
-library(multidplyr)   # for partition() and collect() to work in parallel
+# library(multidplyr)   # for partition() and collect() to work in parallel
+library(furrr)        # for parallelization
 library(ROCR)         # for binary clasification metrices
 
 source("R/sevenC.functions.R")
@@ -22,6 +23,7 @@ source("R/sevenC.functions.R")
 # use previously saved gi object?
 GI_LOCAL <- FALSE
 N_CORES = min(16, parallel::detectCores() - 1)
+plan(multicore, workers = N_CORES)
 
 # MIN_MOTIF_SIG <- 5
 MOTIF_PVAL <- 2.5 * 1e-06
@@ -34,14 +36,14 @@ N_TOP_MODELS = 10
 dataCandidatesPreifx <- file.path("results", 
                                   paste0("CTCF_JASPAR.v01.pval_", MOTIF_PVAL))
 
-outPrefix <- file.path("results", paste0("v05_input_types.", 
+outPrefix <- file.path("results", paste0("v06_input_types.", 
                                          paste0("motifPval", MOTIF_PVAL), 
                                          "_w", WINDOW_SIZE, 
                                          "_b", BIN_SIZE))
 
 dir.create(dirname(outPrefix), showWarnings = FALSE)
 
-DATA_TYPES_META_FILE = "data/DATA_TYPES_metadata.tsv"
+DATA_TYPES_META_FILE = "data/DATA_TYPES_metadata_v06.tsv"
 
 # Parse and filter meta data  --------------------------------------------------
 
@@ -64,22 +66,29 @@ meta <- meta %>%
 
 write_tsv(meta, paste0(outPrefix, ".meta_filtered.tsv"))
 
-COL_TF <- brewer.pal(8, "Set2")[1:length(unique(meta$TF))]
+# COL_TF <- brewer.pal(8, "Set2")[1:length(unique(meta$TF))]
+# names(COL_TF) <- unique(meta$TF)
+COL_TF <- c(brewer.pal(8, "Set2")[1:6], brewer.pal(8, "Accent")[2:6])
 names(COL_TF) <- unique(meta$TF)
 #barplot(1:length(COL_TF), col = COL_TF, names.arg = names(COL_TF))
+# pie(rep(1, length(COL_TF)), col = COL_TF, labels = names(COL_TF))
 
 # Select motifs and parse input data -----------------------------------
 
 # read CTCF moitf pairs as candidates
 gi <- read_rds(paste0(dataCandidatesPreifx, ".gi.rds"))
+# gi <- read_rds(paste0(
+#   str_replace(outPrefix, "v06", "v05"), ".gi.rds"))
 
 # Annotae with coverage and correlation -------------------------------------
+# new_idx <- which(str_detect(meta$name, "histone"))
 
 if (!GI_LOCAL ) {
   
   # iterate over all ChIP-seq sata sets
   for (i in seq_len(nrow(meta))) {
-    
+  # for (i in new_idx) {
+      
     message("INFO: --> Working on sample: ", meta$name[i], ", ", i, " of ", nrow(meta), " <--")
     
     #add coverage and correlation of coverage
@@ -173,7 +182,7 @@ cvDF <- cvDF %>%
   # fit model on training part
   # fit model and save estimates in tidy format
   mutate(
-    tidy_model = map2(Fold, design, .f = tidyer_fitter, 
+    tidy_model = future_map2(Fold, design, .f = tidyer_fitter, 
                       tidyCV = tidyCV, data = df),
     pred = pmap(
       list(
