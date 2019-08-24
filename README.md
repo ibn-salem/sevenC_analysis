@@ -17,6 +17,7 @@ More details on using the sevenC R package itself can be found on the [sevenC we
     1. [analyse_motif_significance.R](R/analyse_motif_significance.R)
     1. [analyse_motif_overlap.R](R/analyse_motif_overlap.R)
 1. [analyse_selected_models.R](R/analyse_selected_models.R)
+1. [analyse_selected_models_on_loop_subset.R](R/analyse_selected_models_on_loop_subset.R)
 1. [screen_TFs_lfc.R](R/screen_TFs_lfc.R)
 1. [binary_predictions.R](R/binary_predictions.R)
 1. [compare_other_tools.R](R/compare_other_tools.R)
