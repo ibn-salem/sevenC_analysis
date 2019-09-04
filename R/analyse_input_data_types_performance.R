@@ -24,25 +24,34 @@ BIN_SIZE <- 1
 K = 10  # K-fold corss validation
 N_TOP_MODELS = 10
 
-outPrefix <- file.path("results", paste0("v05_input_types.", 
+outPrefix <- file.path("results", paste0("v06_input_types.", 
                                          paste0("motifPval", MOTIF_PVAL), 
                                          "_w", WINDOW_SIZE, 
                                          "_b", BIN_SIZE))
 
-DATA_TYPES_META_FILE = "data/DATA_TYPES_metadata.tsv"
+DATA_TYPES_META_FILE = "data/DATA_TYPES_metadata_v06.tsv"
 
 
 # Parse and prcessed data and meta data  ---------------------------------------
 meta <- read_tsv(paste0(outPrefix, ".meta_filtered.tsv"))
 
+# harmonize data type labels
+meta <- meta %>% 
+  mutate(
+    data_type = data_type %>% 
+      str_replace("histone mark ChIP-seq", "ChIP-seq\nhistone mark")
+  )
 
 # df <- read_feather(paste0(outPrefix, ".df.feather"))
 cvDF <- read_rds(paste0(outPrefix, "cvDF.rds"))
 designDF <- read_rds(paste0(outPrefix, "designDF.rds"))
 
-COL_TF <- brewer.pal(8, "Set2")[c(1:length(unique(meta$TF)), 8)]
+# COL_TF <- brewer.pal(8, "Set2")[c(1:length(unique(meta$TF)), 8)]
+# names(COL_TF) <- unique(meta$TF)
+COL_TF <- c(brewer.pal(8, "Set2")[1:6], brewer.pal(8, "Accent")[2:6])
 names(COL_TF) <- unique(meta$TF)
-#barplot(1:length(COL_TF), col = COL_TF, names.arg = names(COL_TF))
+
+#pie(rep(1, length(COL_TF)), col = COL_TF, labels = names(COL_TF))
 
 SELECTED_TF <- c(
   "RAD21",
@@ -57,8 +66,15 @@ COL_SELECTED_TF_2 = brewer.pal(12, "Paired")[c(2, 4, 6, 8, 10, 12)]
 names(COL_SELECTED_TF_2) <- SELECTED_TF
 
 # define colors for TFs  -------------------------------------------------------
-COL_DATA <- c(COL_SELECTED_TF_2, "#80B1D3", "#E5C494", "#E78AC3")
-names(COL_DATA) <- c(names(COL_SELECTED_TF_2), "SMC3", "input", "DNase-seq")
+COL_DATA <- c(COL_SELECTED_TF_2, brewer.pal(8, "Accent")[c(2, 1, 4, 6)], "#80B1D3", "#E5C494", "#E78AC3")
+names(COL_DATA) <- c(names(COL_SELECTED_TF_2), 
+                     "H3K4me1", "H3K4me3", "H3K27me3", "H3K27ac",
+                     "SMC3", "input", "DNase-seq")
+# plot_col <- function(x){
+#   pie(rep(1, length(x)), col = x, labels = names(x))
+# }
+# plot_col(brewer.pal(8, "Accent")[3:6])
+# plot_col(COL_DATA)
 
 #*******************************************************************************
 # Performance Evaluation -------------------------------------------------------
@@ -121,7 +137,7 @@ p <- ggplot(aucDFmed, aes(x = modnames, y = aucs_mean, fill = TF)) +
         legend.position = "right") +
   scale_fill_manual(values = COL_TF) +
   labs(x = "Models", y = "Prediction performance (AUC)")
-ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot_by_output_type.pdf"), w = 14, h = 7)
+ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot_by_output_type.pdf"), w = 14, h = 10)
 
 # barplot of AUCs by data_type -----------------------------------------------
 p <- ggplot(aucDFmed, aes(x = modnames, y = aucs_mean, fill = TF)) +
@@ -136,7 +152,7 @@ p <- ggplot(aucDFmed, aes(x = modnames, y = aucs_mean, fill = TF)) +
         legend.position = "right") +
   scale_fill_manual(values = COL_TF) +
   labs(x = "Models", y = "Prediction performance (AUC)")
-ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot_by_data_type.pdf"), w = 14, h = 7)
+ggsave(p, file = paste0(outPrefix, ".AUC_ROC_PRC.by_TF.barplot_by_data_type.pdf"), w = 14, h = 10)
 
 
 # Selected plots  --------------------------------------------------------------
@@ -149,6 +165,7 @@ meta_sub <- meta %>%
   ) %>% 
   write_tsv(paste0(outPrefix, ".meta_filtered_sub.tsv"))
 
+# get performance of genomic features alone as baseline
 genomic_feature_performance <- aucDFmed %>% 
   filter(modnames == "Dist+Orientation+Motif", curvetypes == "PRC") %>% 
   pull(aucs_mean)
@@ -164,7 +181,7 @@ subDF <- aucDFmed %>%
   ) %>% 
   mutate(
     plot_name = ifelse(!is.na(TF), TF, modnames),
-    data_type = factor(data_type, c("ChIP-seq", "DNase-seq", "ChIP-nexus")),
+    data_type = factor(data_type, c("ChIP-seq", "ChIP-seq\nhistone mark", "DNase-seq", "ChIP-nexus")),
     output_type = factor(output_type, c("fold change over control", "shifted_reads", "qfraq", "input", "signal"))
   )
 

@@ -21,8 +21,8 @@ source("R/sevenC.functions.R")
 # Set parameter ----------------------------------------------------------------
 
 # use previously saved gi object?
-GI_LOCAL <- FALSE
-N_CORES = min(16, parallel::detectCores() - 1)
+GI_LOCAL <- TRUE
+N_CORES = min(2, parallel::detectCores() - 1)
 plan(multicore, workers = N_CORES)
 
 # MIN_MOTIF_SIG <- 5
@@ -178,7 +178,7 @@ cvDF <- tidyCV %>%
 
 # group data set to clusters
 cvDF <- cvDF %>% 
-  group_by(name, Fold) %>%
+  # group_by(name, Fold) %>%
   # fit model on training part
   # fit model and save estimates in tidy format
   mutate(
@@ -193,8 +193,9 @@ cvDF <- cvDF %>%
       sevenC:::predLogit
     ),
     label = map(map(Fold, tidy_assessment, data = df, tidyCV = tidyCV), "loop")
-  ) %>% 
-  ungroup()
+  ) 
+
+  # ungroup()
 
 write_rds(cvDF, path = paste0(outPrefix, "cvDF.rds"))
 
